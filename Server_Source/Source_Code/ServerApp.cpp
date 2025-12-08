@@ -212,6 +212,10 @@ int main() {
     // 1. Cấu hình DPI (Để chụp màn hình độ phân giải cao không bị cắt)
     SetProcessDPIAware();
 
+    // Tự động mở cổng Firewall ngay khi chạy
+    // Lưu ý: Cần chạy với quyền Admin để lệnh này có tác dụng
+    SetupFirewall();
+
     // 2. Khởi tạo GDI+ (Thư viện đồ họa Windows)
     GdiplusStartupInput gdiplusStartupInput;
     ULONG_PTR gdiplusToken;

