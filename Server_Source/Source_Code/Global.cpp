@@ -64,3 +64,30 @@ std::vector<unsigned char> ReadFileToBuffer(const std::string& filepath) {
     if (file.read((char*)buffer.data(), size)) return buffer;
     return {};
 }
+
+// Hàm lấy IP LAN (IPv4)
+std::string GetLocalIPAddress() {
+    char hostname[256];
+    if (gethostname(hostname, sizeof(hostname)) == SOCKET_ERROR) {
+        return "Error";
+    }
+
+    struct hostent* hostinfo = gethostbyname(hostname);
+    if (hostinfo == NULL) {
+        return "Error";
+    }
+
+    // Duyệt qua danh sách IP (vì một máy có thể có nhiều card mạng)
+    // Thường IP LAN chính sẽ nằm ở vị trí đầu tiên hoặc thứ hai
+    for (int i = 0; hostinfo->h_addr_list[i] != 0; ++i) {
+        struct in_addr addr;
+        memcpy(&addr, hostinfo->h_addr_list[i], sizeof(struct in_addr));
+        std::string ip = inet_ntoa(addr);
+
+        // Lọc bớt IP localhost (127.0.0.1) nếu có, chỉ lấy IP mạng LAN
+        if (ip != "127.0.0.1") {
+            return ip;
+        }
+    }
+    return "127.0.0.1"; // Fallback nếu không tìm thấy
+}

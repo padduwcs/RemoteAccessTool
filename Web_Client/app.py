@@ -20,11 +20,8 @@ app = Flask(__name__)
 
 @app.route('/')
 def index():
-    """
-    Route chính: Truyền địa chỉ WebSocket Server vào template HTML.
-    """
-    ws_url = f"ws://{TARGET_IP}:{WS_PORT}"
-    return render_template('index.html', ws_url=ws_url)
+    # Truyền IP mặc định để hiện trong ô nhập liệu
+    return render_template('index.html', default_ip="127.0.0.1")
 
 if __name__ == '__main__':
     print("===============================================================")

