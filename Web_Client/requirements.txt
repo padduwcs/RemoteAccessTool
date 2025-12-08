@@ -1,0 +1,5 @@
+Flask
+websocket-client
+opencv-python
+pillow
+numpy

