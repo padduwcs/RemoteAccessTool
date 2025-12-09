@@ -59,10 +59,19 @@ extern server* g_ServerPtr;
 extern websocketpp::connection_hdl g_ClientHdl;
 extern bool g_ClientConnected;
 
+// CMD Terminal Session
+extern HANDLE g_CmdProcess;
+extern HANDLE g_CmdStdInWrite;
+extern HANDLE g_CmdStdOutRead;
+extern std::thread* g_CmdReaderThread;
+extern bool g_CmdRunning;
+extern bool g_CmdShowWindow;
+
 // KHAI BÁO HÀM TIỆN ÍCH
 std::string ToLower(std::string str);
 bool IsKeyDown(int vk);
 std::string Base64Encode(unsigned char const* bytes_to_encode, unsigned int in_len);
+std::string Base64Decode(const std::string& encoded_string);
 std::vector<unsigned char> ReadFileToBuffer(const std::string& filepath);
 
 std::string GetLocalIPAddress();

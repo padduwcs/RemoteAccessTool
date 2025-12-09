@@ -32,3 +32,6 @@ __pycache__/
 # NHƯNG cho phép file Zip
 !*.zip
 !*.rar
+
+#react.js
+node_modules/

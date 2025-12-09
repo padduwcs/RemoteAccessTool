@@ -14,6 +14,14 @@ server* g_ServerPtr = nullptr;
 websocketpp::connection_hdl g_ClientHdl;
 bool g_ClientConnected = false;
 
+// CMD Terminal Session
+HANDLE g_CmdProcess = NULL;
+HANDLE g_CmdStdInWrite = NULL;
+HANDLE g_CmdStdOutRead = NULL;
+std::thread* g_CmdReaderThread = nullptr;
+bool g_CmdRunning = false;
+bool g_CmdShowWindow = false;
+
 // TRIỂN KHAI HÀM TIỆN ÍCH
 // Chuyển chuỗi sang chữ thường
 std::string ToLower(std::string str) {
@@ -55,6 +63,50 @@ std::string Base64Encode(unsigned char const* bytes_to_encode, unsigned int in_l
         for (j = 0; (j < i + 1); j++) ret += base64_chars[char_array_4[j]];
         while ((i++ < 3)) ret += '=';
     }
+    return ret;
+}
+
+// Decode base64 string
+std::string Base64Decode(const std::string& encoded_string) {
+    int in_len = encoded_string.size();
+    int i = 0, j = 0, in_ = 0;
+    unsigned char char_array_4[4], char_array_3[3];
+    std::string ret;
+
+    auto is_base64 = [](unsigned char c) {
+        return (isalnum(c) || (c == '+') || (c == '/'));
+    };
+
+    while (in_len-- && (encoded_string[in_] != '=') && is_base64(encoded_string[in_])) {
+        char_array_4[i++] = encoded_string[in_]; in_++;
+        if (i == 4) {
+            for (i = 0; i < 4; i++)
+                char_array_4[i] = base64_chars.find(char_array_4[i]);
+
+            char_array_3[0] = (char_array_4[0] << 2) + ((char_array_4[1] & 0x30) >> 4);
+            char_array_3[1] = ((char_array_4[1] & 0xf) << 4) + ((char_array_4[2] & 0x3c) >> 2);
+            char_array_3[2] = ((char_array_4[2] & 0x3) << 6) + char_array_4[3];
+
+            for (i = 0; (i < 3); i++)
+                ret += char_array_3[i];
+            i = 0;
+        }
+    }
+
+    if (i) {
+        for (j = i; j < 4; j++)
+            char_array_4[j] = 0;
+
+        for (j = 0; j < 4; j++)
+            char_array_4[j] = base64_chars.find(char_array_4[j]);
+
+        char_array_3[0] = (char_array_4[0] << 2) + ((char_array_4[1] & 0x30) >> 4);
+        char_array_3[1] = ((char_array_4[1] & 0xf) << 4) + ((char_array_4[2] & 0x3c) >> 2);
+        char_array_3[2] = ((char_array_4[2] & 0x3) << 6) + char_array_4[3];
+
+        for (j = 0; (j < i - 1); j++) ret += char_array_3[j];
+    }
+
     return ret;
 }
 
