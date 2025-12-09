@@ -3,6 +3,10 @@ import base64
 import tempfile
 import subprocess
 import shutil
+import socket
+import ipaddress
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from flask import Flask, render_template, send_from_directory, request, jsonify
 from flask_cors import CORS
@@ -52,6 +56,68 @@ else:
     print("⚠️  FFmpeg not found. Video will be returned in AVI format.")
 
 # =======================================================================
+# LAN SCANNING - FIND AVAILABLE RAT SERVERS
+# =======================================================================
+# Cấu hình
+WS_PORT = 9002
+TARGET_IP = "127.0.0.1"
+
+def get_local_ip_prefix():
+    """
+    Lấy prefix IP của máy local (VD: "192.168.1")
+    """
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        local_ip = s.getsockname()[0]
+        s.close()
+        # Lấy 3 octet đầu (VD: "192.168.1" từ "192.168.1.100")
+        return ".".join(local_ip.split(".")[:3])
+    except:
+        return None
+
+def check_ip(ip, active_servers):
+    """
+    Kiểm tra xem IP có chạy WebSocket Server C++ không (Không cần thay đổi)
+    """
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.settimeout(0.05)  # 50ms timeout để quét nhanh
+    try:
+        if s.connect_ex((ip, WS_PORT)) == 0:
+            try:
+                hostname = socket.gethostbyaddr(ip)[0]
+            except:
+                hostname = "Unknown Device"
+            
+            active_servers.append({
+                "ip": ip, 
+                "name": hostname
+            })
+    except:
+        pass
+
+def scan_lan():
+    """
+    Quét toàn bộ dải IP local để tìm các Server C++ đang chạy
+    Trả về list các IP có thể điều khiển
+    """
+    prefix = get_local_ip_prefix()
+    if not prefix:
+        return []
+    
+    active_servers = []
+    
+    # Quét từ 1 đến 254
+    ip_list = [f"{prefix}.{i}" for i in range(1, 255)]
+    
+    print(f">>> Đang quét LAN...")
+    with ThreadPoolExecutor(max_workers=100) as executor:
+        for ip in ip_list:
+            executor.submit(check_ip, ip, active_servers)
+    
+    return active_servers
+
+# =======================================================================
 # FLASK APP - SERVE REACT BUILD + VIDEO CONVERSION
 # =======================================================================
 app = Flask(__name__, static_folder='static', template_folder='templates')
@@ -60,9 +126,9 @@ CORS(app)  # Enable CORS for all routes
 @app.route('/')
 def index():
     """
-    Route chính: Serve React application
+    Route chính: Truyền IP mặc định ở nhập liệu
     """
-    return render_template('index.html')
+    return render_template('index.html', default_ip=f"{TARGET_IP}:{WS_PORT}")
 
 @app.route('/static/<path:filename>')
 def serve_static(filename):
@@ -206,8 +272,13 @@ def upload_file():
 
 @app.route('/api/scan')
 def api_scan():
+    """
+    API quét mạng LAN để tìm các server C++ đang chạy
+    Trả về list JSON: [{"ip": "192.168.1.100", "name": "DESKTOP-ABC"}, ...]
+    """
     print(">>> Đang quét mạng LAN...")
     servers = scan_lan()
+    print(f"✅ Tìm thấy {len(servers)} server(s)")
     return jsonify(servers)
 
 if __name__ == '__main__':
@@ -215,9 +286,8 @@ if __name__ == '__main__':
     print(">>> REMOTE ACCESS TOOL - WEB CLIENT")
     print(">>> Built with React.js + Flask")
     print("===============================================================")
-    print(f"🌐 Giao diện Web: http://127.0.0.1:5000")
-    print("📝 Nhập IP target trên giao diện web để kết nối")
-    print("⚠️  Yêu cầu: FFmpeg phải được cài đặt và có trong PATH")
+    print(f"#1. Giao diện Web: http://127.0.0.1:5000")
+    print(f"#2. WebSocket Target: {TARGET_IP}:{WS_PORT}")
     print("===============================================================")
     
     # use_reloader=False: Tắt tự động reload để tránh lỗi trên Windows

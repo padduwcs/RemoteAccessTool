@@ -32,6 +32,10 @@ const App = () => {
   // Auto-detect IP state
   const [isDetectingIP, setIsDetectingIP] = useState(false);
   
+  // LAN Scan states
+  const [availableServers, setAvailableServers] = useState([]);
+  const [isScanning, setIsScanning] = useState(false);
+  
   // Custom Modal states
   const [modal, setModal] = useState({
     show: false,
@@ -241,6 +245,33 @@ const App = () => {
         showAlert('⏱️ Timeout', 'Server detection timeout.\nPlease enter IP manually.');
       }
     }, 3000);
+  };
+
+  // Scan LAN for available servers
+  const handleScanLAN = async () => {
+    setIsScanning(true);
+    setAvailableServers([]);
+    
+    try {
+      const response = await fetch('/api/scan');
+      const servers = await response.json();
+      setAvailableServers(servers);
+      setIsScanning(false);
+      
+      if (servers.length > 0) {
+        showAlert('✅ Scan Complete', `Found ${servers.length} server(s) on LAN`);
+      } else {
+        showAlert('⚠️ No Servers Found', 'No RAT servers detected on your LAN.\nMake sure the server is running.');
+      }
+    } catch (error) {
+      setIsScanning(false);
+      showAlert('❌ Scan Failed', 'Failed to scan network: ' + error.message);
+    }
+  };
+
+  // Select server from list
+  const handleSelectServer = (ip) => {
+    setTargetIP(ip);
   };
 
   // Kết nối WebSocket
@@ -815,6 +846,40 @@ const App = () => {
                   </button>
                 </div>
               </div>
+
+              <div className="form-group">
+                <button 
+                  onClick={handleScanLAN} 
+                  className="btn btn-scan"
+                  disabled={isScanning}
+                >
+                  {isScanning ? '🔄 Scanning LAN...' : '🌐 Scan LAN for Servers'}
+                </button>
+              </div>
+
+              {availableServers.length > 0 && (
+                <div className="form-group">
+                  <label>
+                    <span className="label-icon">📡</span>
+                    Available Servers ({availableServers.length})
+                  </label>
+                  <div className="server-list">
+                    {availableServers.map((server, index) => (
+                      <div 
+                        key={index} 
+                        className={`server-item ${targetIP === server.ip ? 'selected' : ''}`}
+                        onClick={() => handleSelectServer(server.ip)}
+                      >
+                        <div className="server-info">
+                          <span className="server-ip">🖥️ {server.ip}</span>
+                          <span className="server-name">{server.name}</span>
+                        </div>
+                        {targetIP === server.ip && <span className="checkmark">✓</span>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="form-group">
                 <label>
