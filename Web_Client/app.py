@@ -6,6 +6,7 @@ import shutil
 import socket
 import ipaddress
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from flask import Flask, render_template, send_from_directory, request, jsonify
@@ -76,25 +77,44 @@ def get_local_ip_prefix():
     except:
         return None
 
-def check_ip(ip, active_servers):
+def check_ip(ip):
     """
-    Kiểm tra xem IP có chạy WebSocket Server C++ không (Không cần thay đổi)
+    Kiểm tra xem IP có chạy WebSocket Server C++ không
+    Trả về dict nếu tìm thấy server, None nếu không
     """
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.settimeout(0.05)  # 50ms timeout để quét nhanh
+    sock = None
     try:
-        if s.connect_ex((ip, WS_PORT)) == 0:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(0.15)  # 150ms timeout
+        
+        result = sock.connect_ex((ip, WS_PORT))
+        
+        if result == 0:
+            # Shutdown socket trước khi đóng
+            try:
+                sock.shutdown(socket.SHUT_RDWR)
+            except:
+                pass
+            
+            # Lấy hostname (nhanh hơn nếu cache DNS)
             try:
                 hostname = socket.gethostbyaddr(ip)[0]
             except:
                 hostname = "Unknown Device"
             
-            active_servers.append({
+            return {
                 "ip": ip, 
                 "name": hostname
-            })
-    except:
+            }
+    except Exception:
         pass
+    finally:
+        if sock:
+            try:
+                sock.close()
+            except:
+                pass
+    return None
 
 def scan_lan():
     """
@@ -105,16 +125,29 @@ def scan_lan():
     if not prefix:
         return []
     
-    active_servers = []
-    
     # Quét từ 1 đến 254
     ip_list = [f"{prefix}.{i}" for i in range(1, 255)]
     
-    print(f">>> Đang quét LAN...")
-    with ThreadPoolExecutor(max_workers=100) as executor:
-        for ip in ip_list:
-            executor.submit(check_ip, ip, active_servers)
+    print(f">>> Đang quét LAN (subnet {prefix}.0/24)...")
     
+    active_servers = []
+    
+    # Sử dụng as_completed để xử lý kết quả ngay khi có
+    with ThreadPoolExecutor(max_workers=50) as executor:
+        # Submit tất cả tasks
+        future_to_ip = {executor.submit(check_ip, ip): ip for ip in ip_list}
+        
+        # Đợi và thu thập kết quả
+        for future in as_completed(future_to_ip):
+            try:
+                result = future.result()
+                if result:
+                    active_servers.append(result)
+                    print(f"    ✓ Tìm thấy: {result['ip']} ({result['name']})")
+            except Exception as e:
+                pass
+    
+    print(f">>> Quét xong. Tìm thấy {len(active_servers)} server(s)")
     return active_servers
 
 # =======================================================================

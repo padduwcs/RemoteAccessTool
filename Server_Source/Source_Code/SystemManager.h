@@ -10,6 +10,7 @@ void SystemControl(std::string type);
 // TÍNH NĂNG TỰ KHỞI ĐỘNG
 bool InstallStartup();
 bool RemoveStartup();
+bool CheckStartupExists();
 
 // Tự động mở Port Firewall
 void SetupFirewall();

