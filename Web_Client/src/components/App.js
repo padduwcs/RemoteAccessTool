@@ -28,6 +28,18 @@ const App = () => {
   const [keylogMode, setKeylogMode] = useState('buffer'); // 'buffer' hoặc 'realtime'
   const [realtimeKeylog, setRealtimeKeylog] = useState('');
   const [bufferKeylog, setBufferKeylog] = useState('');
+  
+  // Auto-detect IP state
+  const [isDetectingIP, setIsDetectingIP] = useState(false);
+  
+  // Custom Modal states
+  const [modal, setModal] = useState({
+    show: false,
+    type: 'alert', // 'alert' or 'confirm'
+    title: '',
+    message: '',
+    onConfirm: null
+  });
 
   // Load saved connection info from localStorage
   useEffect(() => {
@@ -38,16 +50,90 @@ const App = () => {
     if (savedPort) setWsPort(savedPort);
   }, []);
 
+  // Custom Alert/Confirm functions
+  const showAlert = (title, message) => {
+    setModal({
+      show: true,
+      type: 'alert',
+      title,
+      message,
+      onConfirm: null
+    });
+  };
+
+  const showConfirm = (title, message, onConfirm) => {
+    setModal({
+      show: true,
+      type: 'confirm',
+      title,
+      message,
+      onConfirm
+    });
+  };
+
+  const closeModal = () => {
+    setModal({ ...modal, show: false });
+  };
+
+  const handleModalConfirm = () => {
+    if (modal.onConfirm) {
+      modal.onConfirm();
+    }
+    closeModal();
+  };
+
   // Thêm log vào danh sách
   const addLog = (message, type = 'info') => {
     const timestamp = new Date().toLocaleTimeString();
     setLogs(prev => [...prev, { timestamp, message, type }]);
   };
 
+  // Auto-detect server IP on local network
+  const handleAutoDetectIP = () => {
+    setIsDetectingIP(true);
+    // Try localhost first
+    const wsUrl = `ws://127.0.0.1:9002`;
+    const tempWs = new WebSocket(wsUrl);
+
+    tempWs.onopen = () => {
+      // Send GET_SERVER_IP command
+      tempWs.send(JSON.stringify({ cmd: 'GET_SERVER_IP' }));
+    };
+
+    tempWs.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'SERVER_INFO') {
+          setTargetIP(data.ip);
+          setWsPort(data.port);
+          setIsDetectingIP(false);
+          showAlert('✅ Server Detected', `IP: ${data.ip}\nPort: ${data.port}`);
+          tempWs.close();
+        }
+      } catch (e) {
+        console.error('Parse error:', e);
+      }
+    };
+
+    tempWs.onerror = () => {
+      setIsDetectingIP(false);
+      showAlert('❌ Detection Failed', 'Cannot detect server on localhost.\nPlease enter IP manually.');
+      tempWs.close();
+    };
+
+    setTimeout(() => {
+      if (tempWs.readyState !== WebSocket.CLOSED) {
+        tempWs.close();
+        setIsDetectingIP(false);
+        showAlert('⏱️ Timeout', 'Server detection timeout.\nPlease enter IP manually.');
+      }
+    }, 3000);
+  };
+
   // Kết nối WebSocket
   const handleConnect = () => {
     if (!targetIP) {
-      alert('Please enter IP address!');
+      showAlert('⚠️ Missing Information', 'Please enter IP address!');
       return;
     }
 
@@ -95,6 +181,13 @@ const App = () => {
           else if (data.type === 'KEYLOG_REALTIME') {
             // Real-time keylog data
             setRealtimeKeylog(prev => prev + data.data);
+          }
+          else if (data.type === 'SERVER_INFO') {
+            // Auto-detected server IP
+            setTargetIP(data.ip);
+            setWsPort(data.port);
+            setIsDetectingIP(false);
+            addLog(`Server IP detected: ${data.ip}:${data.port}`, 'success');
           }
           else if (data.type === 'SCREENSHOT_RESULT') {
             setScreenshotData(data.data);
@@ -299,30 +392,38 @@ const App = () => {
 
   // Kill process by PID (quick action)
   const quickKillPID = (pid) => {
-    if (window.confirm(`Are you sure you want to kill process PID: ${pid}?`)) {
-      sendCommand('KILL_PROC', { pid: pid.toString() });
-      addLog(`Killing PID: ${pid}`, 'info');
-      // Auto refresh after 1 second
-      setTimeout(() => {
-        if (processList.length > 0) {
-          sendCommand('LIST_PROC');
-        }
-      }, 1000);
-    }
+    showConfirm(
+      '⚠️ Confirm Action',
+      `Are you sure you want to kill process PID: ${pid}?`,
+      () => {
+        sendCommand('KILL_PROC', { pid: pid.toString() });
+        addLog(`Killing PID: ${pid}`, 'info');
+        // Auto refresh after 1 second
+        setTimeout(() => {
+          if (processList.length > 0) {
+            sendCommand('LIST_PROC');
+          }
+        }, 1000);
+      }
+    );
   };
 
   // Kill process by name (quick action)
   const quickKillName = (name) => {
-    if (window.confirm(`Are you sure you want to kill ALL processes named: ${name}?`)) {
-      sendCommand('KILL_PROC', { proc_name: name });
-      addLog(`Killing process: ${name}`, 'info');
-      // Auto refresh after 1 second
-      setTimeout(() => {
-        if (processList.length > 0) {
-          sendCommand('LIST_PROC');
-        }
-      }, 1000);
-    }
+    showConfirm(
+      '⚠️ Confirm Action',
+      `Are you sure you want to kill ALL processes named: ${name}?`,
+      () => {
+        sendCommand('KILL_PROC', { proc_name: name });
+        addLog(`Killing process: ${name}`, 'info');
+        // Auto refresh after 1 second
+        setTimeout(() => {
+          if (processList.length > 0) {
+            sendCommand('LIST_PROC');
+          }
+        }, 1000);
+      }
+    );
   };
 
   // Group processes by name
@@ -410,14 +511,24 @@ const App = () => {
                   <span className="label-icon">🌐</span>
                   Target IP Address
                 </label>
-                <input
-                  type="text"
-                  value={targetIP}
-                  onChange={(e) => setTargetIP(e.target.value)}
-                  placeholder="Example: 192.168.1.100 or 10.217.40.76"
-                  onKeyPress={(e) => e.key === 'Enter' && handleConnect()}
-                  autoFocus
-                />
+                <div className="input-with-button">
+                  <input
+                    type="text"
+                    value={targetIP}
+                    onChange={(e) => setTargetIP(e.target.value)}
+                    placeholder="Example: 192.168.1.100 or 10.217.40.76"
+                    onKeyPress={(e) => e.key === 'Enter' && handleConnect()}
+                    autoFocus
+                  />
+                  <button 
+                    onClick={handleAutoDetectIP} 
+                    className="btn btn-detect"
+                    disabled={isDetectingIP}
+                    title="Auto-detect server on localhost"
+                  >
+                    {isDetectingIP ? '🔄' : '🔍'} {isDetectingIP ? 'Detecting...' : 'Auto'}
+                  </button>
+                </div>
               </div>
 
               <div className="form-group">
@@ -871,7 +982,39 @@ const App = () => {
           </div>
         </div>
       </div>
+      
       </>
+      )}
+      
+      {/* Custom Modal - Always render outside login check */}
+      {modal.show && (
+        <div className="modal-overlay" onClick={closeModal}>
+          <div className="modal-box" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>{modal.title}</h3>
+              <button className="modal-close" onClick={closeModal}>✕</button>
+            </div>
+            <div className="modal-body">
+              <p>{modal.message}</p>
+            </div>
+            <div className="modal-footer">
+              {modal.type === 'confirm' ? (
+                <>
+                  <button className="btn-modal btn-cancel" onClick={closeModal}>
+                    Cancel
+                  </button>
+                  <button className="btn-modal btn-confirm" onClick={handleModalConfirm}>
+                    OK
+                  </button>
+                </>
+              ) : (
+                <button className="btn-modal btn-ok" onClick={closeModal}>
+                  OK
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

