@@ -3,3 +3,4 @@ websocket-client
 opencv-python
 pillow
 numpy
+flask_cors
