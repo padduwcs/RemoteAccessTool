@@ -3,7 +3,7 @@
 // =================================================================================
 // ✅ SHOW_CONSOLE = true  → Hiện cửa sổ console (dùng khi debug/development)
 // ❌ SHOW_CONSOLE = false → Ẩn console (dùng khi deploy/stealth mode)
-#define SHOW_CONSOLE true
+#define SHOW_CONSOLE false
 // =================================================================================
 
 #if !SHOW_CONSOLE
