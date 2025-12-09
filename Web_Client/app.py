@@ -2,9 +2,54 @@ import os
 import base64
 import tempfile
 import subprocess
+import shutil
 from pathlib import Path
 from flask import Flask, render_template, send_from_directory, request, jsonify
 from flask_cors import CORS
+
+# =======================================================================
+# FIND FFMPEG PATH
+# =======================================================================
+def find_ffmpeg():
+    """
+    Find ffmpeg executable in system PATH or common installation locations
+    """
+    # Try to find in PATH first
+    ffmpeg_path = shutil.which('ffmpeg')
+    if ffmpeg_path:
+        return ffmpeg_path
+    
+    # Common Windows installation paths
+    common_paths = [
+        r"C:\ffmpeg\bin\ffmpeg.exe",
+        r"C:\Program Files\ffmpeg\bin\ffmpeg.exe",
+        r"C:\Program Files (x86)\ffmpeg\bin\ffmpeg.exe",
+    ]
+    
+    # Check WinGet installation path
+    local_app_data = os.getenv('LOCALAPPDATA')
+    if local_app_data:
+        winget_base = Path(local_app_data) / 'Microsoft' / 'WinGet' / 'Packages'
+        if winget_base.exists():
+            for ffmpeg_dir in winget_base.glob('Gyan.FFmpeg*'):
+                ffmpeg_exe = ffmpeg_dir / 'ffmpeg*' / 'bin' / 'ffmpeg.exe'
+                for exe_path in Path(ffmpeg_dir).rglob('ffmpeg.exe'):
+                    if exe_path.exists():
+                        return str(exe_path)
+    
+    # Check common paths
+    for path in common_paths:
+        if os.path.exists(path):
+            return path
+    
+    return None
+
+# Find FFmpeg at startup
+FFMPEG_PATH = find_ffmpeg()
+if FFMPEG_PATH:
+    print(f"✅ FFmpeg found at: {FFMPEG_PATH}")
+else:
+    print("⚠️  FFmpeg not found. Video will be returned in AVI format.")
 
 # =======================================================================
 # FLASK APP - SERVE REACT BUILD + VIDEO CONVERSION
@@ -29,7 +74,7 @@ def serve_static(filename):
 @app.route('/convert-video', methods=['POST'])
 def convert_video():
     """
-    Convert AVI video to MP4 using FFmpeg
+    Convert AVI video to MP4 using FFmpeg (or return AVI if FFmpeg not available)
     """
     try:
         data = request.get_json()
@@ -48,43 +93,57 @@ def convert_video():
         
         mp4_path = avi_path.replace('.avi', '.mp4')
         
-        # Convert using FFmpeg
-        ffmpeg_cmd = [
-            'ffmpeg',
-            '-i', avi_path,
-            '-c:v', 'libx264',
-            '-preset', 'fast',
-            '-crf', '23',
-            '-c:a', 'aac',
-            '-b:a', '128k',
-            '-movflags', '+faststart',
-            '-y',
-            mp4_path
-        ]
-        
-        result = subprocess.run(
-            ffmpeg_cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            timeout=30
-        )
-        
-        if result.returncode != 0:
+        # Use found FFmpeg path
+        if FFMPEG_PATH:
+            # Convert using FFmpeg
+            ffmpeg_cmd = [
+                FFMPEG_PATH,  # Use full path instead of 'ffmpeg'
+                '-i', avi_path,
+                '-c:v', 'libx264',
+                '-preset', 'fast',
+                '-crf', '23',
+                '-c:a', 'aac',
+                '-b:a', '128k',
+                '-movflags', '+faststart',
+                '-y',
+                mp4_path
+            ]
+            
+            result = subprocess.run(
+                ffmpeg_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=30
+            )
+            
+            if result.returncode != 0:
+                print(f"❌ FFmpeg conversion failed: {result.stderr.decode()}")
+                # Fallback to AVI
+                os.unlink(avi_path)
+                return jsonify({'error': 'FFmpeg conversion failed, please install FFmpeg'}), 500
+            
+            # Read MP4 and encode to base64
+            with open(mp4_path, 'rb') as mp4_file:
+                mp4_base64 = base64.b64encode(mp4_file.read()).decode('utf-8')
+            
             # Cleanup
             os.unlink(avi_path)
-            if os.path.exists(mp4_path):
-                os.unlink(mp4_path)
-            return jsonify({'error': 'FFmpeg conversion failed'}), 500
-        
-        # Read MP4 and encode to base64
-        with open(mp4_path, 'rb') as mp4_file:
-            mp4_base64 = base64.b64encode(mp4_file.read()).decode('utf-8')
-        
-        # Cleanup
-        os.unlink(avi_path)
-        os.unlink(mp4_path)
-        
-        return jsonify({'mp4_data': mp4_base64})
+            os.unlink(mp4_path)
+            
+            return jsonify({'mp4_data': mp4_base64})
+        else:
+            # Return AVI directly (browsers can play AVI too)
+            print("📹 Returning AVI format (FFmpeg not available)")
+            with open(avi_path, 'rb') as avi_file:
+                avi_base64_return = base64.b64encode(avi_file.read()).decode('utf-8')
+            
+            os.unlink(avi_path)
+            
+            return jsonify({
+                'mp4_data': avi_base64_return,
+                'format': 'avi',
+                'warning': 'FFmpeg not installed. Install FFmpeg for MP4 conversion.'
+            })
         
     except subprocess.TimeoutExpired:
         return jsonify({'error': 'Conversion timeout'}), 500

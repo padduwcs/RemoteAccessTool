@@ -34,4 +34,4 @@ __pycache__/
 !*.rar
 
 #react.js
-node_modules/
+Web_Client/node_modules/

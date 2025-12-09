@@ -197,8 +197,9 @@ void on_message(server* s, websocketpp::connection_hdl hdl, server::message_ptr 
                     j_res["msg"] = "Loi: Hay tat Stream truoc!";
                 }
                 else {
-                    StartRecordVideo(s, hdl);
-                    j_res["msg"] = "Dang ghi hinh 10s...";
+                    int duration = j_req.contains("duration") ? j_req["duration"].get<int>() : 10;
+                    StartRecordVideo(s, hdl, duration);
+                    j_res["msg"] = "Dang khoi dong camera de ghi hinh...";
                 }
                 j_res["type"] = "ACTION_RESULT";
             }

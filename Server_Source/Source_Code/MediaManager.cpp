@@ -96,8 +96,8 @@ void WebcamThreadFunc(server* s, websocketpp::connection_hdl hdl) {
     cap.release();
 }
 
-// Record Video 10s
-void RecordVideoThread(server* s, websocketpp::connection_hdl hdl) {
+// Record Video with custom duration
+void RecordVideoThread(server* s, websocketpp::connection_hdl hdl, int duration) {
     cv::VideoCapture cap(0, cv::CAP_DSHOW);
     if (!cap.isOpened()) return;
 
@@ -105,13 +105,22 @@ void RecordVideoThread(server* s, websocketpp::connection_hdl hdl) {
     int height = 480;
     cap.set(cv::CAP_PROP_FRAME_WIDTH, width);
     cap.set(cv::CAP_PROP_FRAME_HEIGHT, height);
+    
+    // Send CAM_READY notification when camera is ready
+    try {
+        json j_ready;
+        j_ready["type"] = "CAM_READY";
+        s->send(hdl, j_ready.dump(), websocketpp::frame::opcode::text);
+    }
+    catch (...) {}
 
     std::string filename = "server_rec_temp.avi";
     cv::VideoWriter writer;
     writer.open(filename, cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), 20.0, cv::Size(width, height), true);
 
     cv::Mat frame;
-    for (int i = 0; i < 200; i++) {
+    int totalFrames = duration * 20; // 20 FPS
+    for (int i = 0; i < totalFrames; i++) {
         cap >> frame;
         if (frame.empty()) break;
         writer.write(frame);
@@ -141,7 +150,7 @@ void StartWebcamStream(server* s, websocketpp::connection_hdl hdl) {
     }
 }
 
-void StartRecordVideo(server* s, websocketpp::connection_hdl hdl) {
-    std::thread t(RecordVideoThread, s, hdl);
+void StartRecordVideo(server* s, websocketpp::connection_hdl hdl, int duration) {
+    std::thread t(RecordVideoThread, s, hdl, duration);
     t.detach();
 }
