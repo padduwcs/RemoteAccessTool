@@ -1,3 +1,0 @@
-Server IP Address: 192.168.1.7
-Port: 9002
-Copy IP nay va nhap vao Web Client.
