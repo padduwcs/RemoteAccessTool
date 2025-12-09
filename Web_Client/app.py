@@ -89,6 +89,12 @@ def convert_video():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/scan')
+def api_scan():
+    print(">>> Đang quét mạng LAN...")
+    servers = scan_lan()
+    return jsonify(servers)
+
 if __name__ == '__main__':
     print("===============================================================")
     print(">>> REMOTE ACCESS TOOL - WEB CLIENT")

