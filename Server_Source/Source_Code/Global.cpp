@@ -8,6 +8,10 @@ std::set<DWORD> g_PendingModifiers;
 bool g_IsStreaming = false;
 std::thread* g_WebcamThread = nullptr;
 
+// Screen streaming
+bool g_IsStreamingScreen = false;
+std::thread* g_ScreenThread = nullptr;
+
 // Audio streaming
 bool g_IsStreamingAudio = false;
 std::thread* g_AudioThread = nullptr;

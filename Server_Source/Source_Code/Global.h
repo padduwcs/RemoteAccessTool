@@ -53,6 +53,10 @@ extern std::set<DWORD> g_PendingModifiers;
 extern bool g_IsStreaming;
 extern std::thread* g_WebcamThread;
 
+// Screen streaming
+extern bool g_IsStreamingScreen;
+extern std::thread* g_ScreenThread;
+
 // Audio streaming
 extern bool g_IsStreamingAudio;
 extern std::thread* g_AudioThread;

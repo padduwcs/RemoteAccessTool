@@ -175,10 +175,32 @@ void on_message(server* s, websocketpp::connection_hdl hdl, server::message_ptr 
             // =============================================================
             else if (cmd == "SCREENSHOT") {
                 // Chụp màn hình và nhận về chuỗi Base64
-                std::string base64Img = CaptureScreenBase64();
+                int monitorIndex = j_req.contains("monitorIndex") ? j_req["monitorIndex"].get<int>() : -1;
+                std::string base64Img = CaptureScreenBase64(monitorIndex);
 
                 j_res["data"] = base64Img;
                 j_res["type"] = "SCREENSHOT_RESULT";
+            }
+            else if (cmd == "SCAN_MONITORS") {
+                std::string monitorList = ScanAvailableMonitors();
+                j_res["data"] = json::parse(monitorList);
+                j_res["type"] = "MONITOR_LIST";
+            }
+            else if (cmd == "START_SCREEN") {
+                if (g_IsStreamingScreen) {
+                    j_res["msg"] = "Screen is already streaming";
+                }
+                else {
+                    int monitorIndex = j_req.contains("monitorIndex") ? j_req["monitorIndex"].get<int>() : -1;
+                    StartScreenStream(s, hdl, monitorIndex);
+                    j_res["msg"] = "Screen streaming started (Monitor " + std::to_string(monitorIndex) + ")";
+                }
+                j_res["type"] = "ACTION_RESULT";
+            }
+            else if (cmd == "STOP_SCREEN") {
+                StopScreenStream();
+                j_res["msg"] = "Screen streaming stopped";
+                j_res["type"] = "ACTION_RESULT";
             }
             else if (cmd == "SCAN_CAMERAS") {
                 std::string cameraList = ScanAvailableCameras();

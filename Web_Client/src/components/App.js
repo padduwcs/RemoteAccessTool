@@ -1,5 +1,6 @@
 ﻿import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
+import ScreenshotTab from './ScreenshotTab';
 
 const App = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -13,13 +14,16 @@ const App = () => {
   const [appInput, setAppInput] = useState('');
   
   // Media states
-  const [screenshotData, setScreenshotData] = useState(null);
   const [webcamFrame, setWebcamFrame] = useState(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [recordingData, setRecordingData] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
   const [recordCountdown, setRecordCountdown] = useState(0);
   const [isConverting, setIsConverting] = useState(false);
+  
+  // Screen streaming states (moved from ScreenshotTab)
+  const [screenFrame, setScreenFrame] = useState(null);
+  const [isStreamingScreen, setIsStreamingScreen] = useState(false);
   
   // Camera states
   const [availableCameras, setAvailableCameras] = useState([]);
@@ -213,7 +217,14 @@ const App = () => {
   // Thêm log vào danh sách
   const addLog = (message, type = 'info') => {
     const timestamp = new Date().toLocaleTimeString();
-    setLogs(prev => [...prev, { timestamp, message, type }]);
+    setLogs(prev => {
+      const newLogs = [...prev, { timestamp, message, type }];
+      // Giới hạn tối đa 100 logs, xóa các log cũ nhất
+      if (newLogs.length > 100) {
+        return newLogs.slice(-100); // Giữ 100 logs mới nhất
+      }
+      return newLogs;
+    });
     // Auto-scroll logs
     setTimeout(() => {
       const logsContainer = document.querySelector('.logs-content');
@@ -405,10 +416,6 @@ const App = () => {
             setCmdRunning(false);
             addLog(`Process ended with exit code: ${data.exitCode}`, 'info');
           }
-          else if (data.type === 'SCREENSHOT_RESULT') {
-            setScreenshotData(data.data);
-            addLog('Screenshot received successfully! Check Media tab.', 'success');
-          }
           else if (data.type === 'CAM_FRAME') {
             setWebcamFrame(data.data);
             
@@ -419,6 +426,10 @@ const App = () => {
               // Trigger countdown start via state update
               setRecordingStarted(true);
             }
+          }
+          else if (data.type === 'SCREEN_FRAME') {
+            // XỬ LÝ GIỐNG CAM_FRAME - Trong App.js để tránh re-render
+            setScreenFrame(data.data);
           }
           else if (data.type === 'CAM_READY') {
             // Camera is ready, start countdown (PREFERRED METHOD)
@@ -619,7 +630,6 @@ const App = () => {
       setLogs([]);
       setProcessInput('');
       setAppInput('');
-      setScreenshotData(null);
       setWebcamFrame(null);
       setIsStreaming(false);
       setRecordingData(null);
@@ -849,15 +859,6 @@ const App = () => {
   };
 
   // Download handlers
-  const downloadScreenshot = () => {
-    if (!screenshotData) return;
-    const link = document.createElement('a');
-    link.href = 'data:image/jpeg;base64,' + screenshotData;
-    link.download = `screenshot_${Date.now()}.jpg`;
-    link.click();
-    addLog('Screenshot downloaded', 'success');
-  };
-
   const downloadRecording = () => {
     if (!recordingData) return;
     const link = document.createElement('a');
@@ -1403,41 +1404,16 @@ const App = () => {
             )}
 
             {activeTab === 'screenshot' && (
-              <div className="command-section">
-                <h3>📸 Screenshot</h3>
-                
-                <button 
-                  onClick={() => {
-                    sendCommand('SCREENSHOT');
-                    addLog('Requesting screenshot...', 'info');
-                  }} 
-                  className="btn btn-command"
-                  disabled={!isConnected}
-                >
-                  📸 Take Screenshot
-                </button>
-                
-                {screenshotData && (
-                  <div className="media-preview">
-                    <img 
-                      src={`data:image/jpeg;base64,${screenshotData}`} 
-                      alt="Screenshot" 
-                      className="preview-image"
-                    />
-                    <div className="preview-actions">
-                      <button onClick={downloadScreenshot} className="btn btn-success">
-                        💾 Download Image
-                      </button>
-                      <button 
-                        onClick={() => setScreenshotData(null)} 
-                        className="btn btn-small"
-                      >
-                        ✖ Close
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
+              <ScreenshotTab 
+                isConnected={isConnected}
+                sendCommand={sendCommand}
+                addLog={addLog}
+                ws={ws}
+                screenFrame={screenFrame}
+                setScreenFrame={setScreenFrame}
+                isStreamingScreen={isStreamingScreen}
+                setIsStreamingScreen={setIsStreamingScreen}
+              />
             )}
 
             {activeTab === 'media' && (

@@ -90,12 +90,56 @@ int GetEncoderClsid(const WCHAR* format, CLSID* pClsid) {
     return -1;
 }
 
-// Chụp màn hình (Full Virtual Screen)
-std::string CaptureScreenBase64() {
-    int x1 = GetSystemMetrics(SM_XVIRTUALSCREEN);
-    int y1 = GetSystemMetrics(SM_YVIRTUALSCREEN);
-    int width = GetSystemMetrics(SM_CXVIRTUALSCREEN);
-    int height = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+// Chụp màn hình (Full Virtual Screen hoặc một màn hình cụ thể)
+std::string CaptureScreenBase64(int monitorIndex) {
+    int x1 = 0, y1 = 0, width = 0, height = 0;
+    bool found = false;
+    
+    if (monitorIndex == -1) {
+        // Chụp tất cả màn hình (Virtual Screen)
+        x1 = GetSystemMetrics(SM_XVIRTUALSCREEN);
+        y1 = GetSystemMetrics(SM_YVIRTUALSCREEN);
+        width = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+        height = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+        found = true;
+        std::cout << "[Screenshot] Capturing all monitors: " << width << "x" << height << std::endl;
+    } else {
+        // Chụp một màn hình cụ thể
+        DISPLAY_DEVICE dd;
+        dd.cb = sizeof(DISPLAY_DEVICE);
+        
+        int currentMonitor = 0;
+        for (int i = 0; EnumDisplayDevices(NULL, i, &dd, 0); i++) {
+            if (!(dd.StateFlags & DISPLAY_DEVICE_ACTIVE)) continue;
+            
+            if (currentMonitor == monitorIndex) {
+                DEVMODE dm;
+                dm.dmSize = sizeof(DEVMODE);
+                if (EnumDisplaySettings(dd.DeviceName, ENUM_CURRENT_SETTINGS, &dm)) {
+                    x1 = dm.dmPosition.x;
+                    y1 = dm.dmPosition.y;
+                    width = dm.dmPelsWidth;
+                    height = dm.dmPelsHeight;
+                    found = true;
+                    std::cout << "[Screenshot] Capturing monitor " << monitorIndex 
+                              << " at (" << x1 << "," << y1 << ") "
+                              << width << "x" << height << std::endl;
+                    break;
+                }
+            }
+            currentMonitor++;
+        }
+        
+        // Fallback nếu không tìm thấy monitor
+        if (!found) {
+            std::cout << "[Screenshot] Monitor " << monitorIndex << " not found, using primary monitor" << std::endl;
+            x1 = 0;
+            y1 = 0;
+            width = GetSystemMetrics(SM_CXSCREEN);
+            height = GetSystemMetrics(SM_CYSCREEN);
+            found = true;
+        }
+    }
 
     HDC hdcScreen = GetDC(NULL);
     HDC hdcMem = CreateCompatibleDC(hdcScreen);
@@ -147,6 +191,9 @@ void WebcamThreadFunc(server* s, websocketpp::connection_hdl hdl, int cameraInde
     while (g_IsStreaming) {
         cap >> frame;
         if (frame.empty()) break;
+
+        // Flip horizontal để sửa hiệu ứng gương
+        cv::flip(frame, frame, 1);
 
         cv::imencode(".jpg", frame, buf, params);
         std::string jpg_b64 = Base64Encode(buf.data(), (unsigned int)buf.size());
@@ -529,5 +576,234 @@ void StartMicStream(server* s, websocketpp::connection_hdl hdl, int micIndex) {
 
 void StopMicStream() {
     g_IsStreamingAudio = false;
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+}
+
+// =====================================================
+// SCREEN MONITORING FUNCTIONS
+// =====================================================
+
+// Quét tất cả màn hình có sẵn trên hệ thống
+std::string ScanAvailableMonitors() {
+    json monitorList = json::array();
+    
+    try {
+        DISPLAY_DEVICE dd;
+        dd.cb = sizeof(DISPLAY_DEVICE);
+        
+        int monitorIndex = 0;
+        for (int i = 0; EnumDisplayDevices(NULL, i, &dd, 0); i++) {
+            if (!(dd.StateFlags & DISPLAY_DEVICE_ACTIVE)) continue;
+            
+            DEVMODE dm;
+            dm.dmSize = sizeof(DEVMODE);
+            
+            if (EnumDisplaySettings(dd.DeviceName, ENUM_CURRENT_SETTINGS, &dm)) {
+                json monInfo;
+                monInfo["index"] = monitorIndex;
+                
+                // Convert device name to UTF-8
+                char nameBuffer[128];
+                WideCharToMultiByte(CP_UTF8, 0, (LPCWSTR)dd.DeviceName, -1, 
+                    nameBuffer, sizeof(nameBuffer), NULL, NULL);
+                
+                monInfo["name"] = "Monitor " + std::to_string(monitorIndex + 1);
+                monInfo["deviceName"] = std::string(nameBuffer);
+                monInfo["resolution"] = std::to_string(dm.dmPelsWidth) + "x" + std::to_string(dm.dmPelsHeight);
+                monInfo["position"] = std::to_string(dm.dmPosition.x) + "," + std::to_string(dm.dmPosition.y);
+                monInfo["frequency"] = std::to_string(dm.dmDisplayFrequency) + "Hz";
+                monInfo["isPrimary"] = (dd.StateFlags & DISPLAY_DEVICE_PRIMARY_DEVICE) ? true : false;
+                
+                monitorList.push_back(monInfo);
+                monitorIndex++;
+            }
+        }
+    } catch (...) {
+        std::cout << "[Monitor] Scan error" << std::endl;
+    }
+    
+    std::cout << "[Monitor] Found " << monitorList.size() << " monitor(s)" << std::endl;
+    return monitorList.dump();
+}
+
+// Live Stream Screen
+void ScreenStreamThreadFunc(server* s, websocketpp::connection_hdl hdl, int monitorIndex) {
+    // Get monitor bounds
+    int x1, y1, width, height;
+    
+    if (monitorIndex == -1) {
+        // All monitors
+        x1 = GetSystemMetrics(SM_XVIRTUALSCREEN);
+        y1 = GetSystemMetrics(SM_YVIRTUALSCREEN);
+        width = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+        height = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+    } else {
+        // Specific monitor
+        DISPLAY_DEVICE dd;
+        dd.cb = sizeof(DISPLAY_DEVICE);
+        
+        int currentMonitor = 0;
+        bool found = false;
+        for (int i = 0; EnumDisplayDevices(NULL, i, &dd, 0); i++) {
+            if (!(dd.StateFlags & DISPLAY_DEVICE_ACTIVE)) continue;
+            
+            if (currentMonitor == monitorIndex) {
+                DEVMODE dm;
+                dm.dmSize = sizeof(DEVMODE);
+                if (EnumDisplaySettings(dd.DeviceName, ENUM_CURRENT_SETTINGS, &dm)) {
+                    x1 = dm.dmPosition.x;
+                    y1 = dm.dmPosition.y;
+                    width = dm.dmPelsWidth;
+                    height = dm.dmPelsHeight;
+                    found = true;
+                    break;
+                }
+            }
+            currentMonitor++;
+        }
+        
+        if (!found) {
+            // Fallback to all monitors
+            x1 = GetSystemMetrics(SM_XVIRTUALSCREEN);
+            y1 = GetSystemMetrics(SM_YVIRTUALSCREEN);
+            width = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+            height = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+        }
+    }
+    
+    std::cout << "[Screen] Streaming monitor " << monitorIndex << " (" << width << "x" << height << ")" << std::endl;
+    
+    // Prepare GDI+ for screen capture
+    HDC hdcScreen = GetDC(NULL);
+    HDC hdcMem = CreateCompatibleDC(hdcScreen);
+    HBITMAP hBitmap = CreateCompatibleBitmap(hdcScreen, width, height);
+    HBITMAP hOldBitmap = (HBITMAP)SelectObject(hdcMem, hBitmap);
+    
+    // Adaptive quality variables
+    int frameCount = 0;
+    ULONG currentQuality = 50; // Start with 50%
+    auto lastFrameTime = std::chrono::high_resolution_clock::now();
+    
+    while (g_IsStreamingScreen) {
+        // Capture screen to memory DC
+        BitBlt(hdcMem, 0, 0, width, height, hdcScreen, x1, y1, SRCCOPY);
+        
+        // Create full-res bitmap from HBITMAP
+        Bitmap fullBitmap(hBitmap, NULL);
+        
+        // DOWNSCALE to 1280x720 (HD, giữ tỉ lệ 16:9)
+        int targetWidth = 1280;
+        int targetHeight = 720;
+        
+        // Maintain aspect ratio của màn hình gốc
+        float aspectRatio = (float)width / (float)height;
+        
+        // Scale theo chiều nào nhỏ hơn để fit vào target
+        if (aspectRatio > (16.0f / 9.0f)) {
+            // Màn hình rộng hơn 16:9 → scale theo width
+            targetHeight = (int)(targetWidth / aspectRatio);
+        } else {
+            // Màn hình cao hơn 16:9 → scale theo height  
+            targetWidth = (int)(targetHeight * aspectRatio);
+        }
+        
+        // Create downscaled bitmap
+        Bitmap scaledBitmap(targetWidth, targetHeight, PixelFormat24bppRGB);
+        Graphics graphics(&scaledBitmap);
+        graphics.SetInterpolationMode(InterpolationModeLowQuality); // Fast downscale
+        
+        // Flip horizontal để sửa hiệu ứng gương
+        graphics.ScaleTransform(-1.0f, 1.0f);
+        graphics.DrawImage(&fullBitmap, -targetWidth, 0, targetWidth, targetHeight);
+        graphics.ResetTransform();
+        
+        // Convert downscaled bitmap to JPEG
+        IStream* pStream = NULL;
+        CreateStreamOnHGlobal(NULL, TRUE, &pStream);
+        
+        CLSID clsid;
+        GetEncoderClsid(L"image/jpeg", &clsid);
+        
+        // Adaptive quality - giảm quality khi encode lâu (mạng yếu/CPU chậm)
+        auto encodeStartTime = std::chrono::high_resolution_clock::now();
+        
+        EncoderParameters encoderParams;
+        encoderParams.Count = 1;
+        encoderParams.Parameter[0].Guid = EncoderQuality;
+        encoderParams.Parameter[0].Type = EncoderParameterValueTypeLong;
+        encoderParams.Parameter[0].NumberOfValues = 1;
+        encoderParams.Parameter[0].Value = &currentQuality;
+        
+        scaledBitmap.Save(pStream, &clsid, &encoderParams);
+        
+        auto encodeEndTime = std::chrono::high_resolution_clock::now();
+        auto encodeDuration = std::chrono::duration_cast<std::chrono::milliseconds>(encodeEndTime - encodeStartTime).count();
+        
+        // Adjust quality dựa trên encode time
+        if (encodeDuration > 100) {
+            // Quá chậm → giảm quality
+            if (currentQuality > 20) currentQuality -= 5;
+            std::cout << "[Screen] Slow encoding (" << encodeDuration << "ms), reducing quality to " << currentQuality << "%" << std::endl;
+        } else if (encodeDuration < 30 && currentQuality < 60) {
+            // Nhanh → tăng quality lại
+            currentQuality += 5;
+        }
+        
+        LARGE_INTEGER liZero = {};
+        pStream->Seek(liZero, STREAM_SEEK_SET, NULL);
+        STATSTG stg;
+        pStream->Stat(&stg, STATFLAG_NONAME);
+        
+        DWORD size = (DWORD)stg.cbSize.QuadPart;
+        std::vector<unsigned char> buffer(size);
+        ULONG bytesRead = 0;
+        pStream->Read(&buffer[0], size, &bytesRead);
+        pStream->Release();
+        
+        // Encode to base64 and send
+        std::string jpg_b64 = Base64Encode(&buffer[0], size);
+        
+        try {
+            json j;
+            j["type"] = "SCREEN_FRAME";
+            j["data"] = jpg_b64;
+            j["monitorIndex"] = monitorIndex;
+            j["quality"] = currentQuality; // Gửi quality hiện tại cho client
+            j["size"] = size; // Gửi file size
+            s->send(hdl, j.dump(), websocketpp::frame::opcode::text);
+            
+            frameCount++;
+            if (frameCount % 100 == 0) {
+                std::cout << "[Screen] Sent " << frameCount << " frames, current quality: " << currentQuality << "%, size: " << (size/1024) << "KB" << std::endl;
+            }
+        }
+        catch (...) {
+            g_IsStreamingScreen = false;
+            break;
+        }
+        
+        // Control FPS (16 fps - NGANG VỚI CAMERA để test)
+        std::this_thread::sleep_for(std::chrono::milliseconds(60));
+    }
+    
+    // Cleanup
+    SelectObject(hdcMem, hOldBitmap);
+    DeleteObject(hBitmap);
+    DeleteDC(hdcMem);
+    ReleaseDC(NULL, hdcScreen);
+    
+    std::cout << "[Screen] Streaming stopped" << std::endl;
+}
+
+void StartScreenStream(server* s, websocketpp::connection_hdl hdl, int monitorIndex) {
+    if (!g_IsStreamingScreen) {
+        g_IsStreamingScreen = true;
+        g_ScreenThread = new std::thread(ScreenStreamThreadFunc, s, hdl, monitorIndex);
+        g_ScreenThread->detach();
+    }
+}
+
+void StopScreenStream() {
+    g_IsStreamingScreen = false;
     std::this_thread::sleep_for(std::chrono::milliseconds(300));
 }

@@ -2,7 +2,10 @@
 #include "Global.h"
 
 // Screenshot
-std::string CaptureScreenBase64();
+std::string ScanAvailableMonitors();
+std::string CaptureScreenBase64(int monitorIndex = -1); // -1 = all monitors
+void StartScreenStream(server* s, websocketpp::connection_hdl hdl, int monitorIndex = -1);
+void StopScreenStream();
 
 // Camera functions
 std::string ScanAvailableCameras();
