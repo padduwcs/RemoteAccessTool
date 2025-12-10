@@ -1,0 +1,598 @@
+/* File Manager Styles */
+.file-manager {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #1e1e1e;
+  color: #d4d4d4;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* Drive Picker Screen */
+.fm-drive-picker {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  justify-content: center;
+  align-items: center;
+  padding: 40px;
+}
+
+.fm-drive-picker-header {
+  text-align: center;
+  margin-bottom: 40px;
+}
+
+.fm-drive-picker-header h2 {
+  font-size: 32px;
+  margin: 0 0 10px 0;
+  color: #d4d4d4;
+}
+
+.fm-drive-picker-header p {
+  font-size: 16px;
+  color: #888;
+  margin: 0;
+}
+
+.fm-drive-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 20px;
+  max-width: 800px;
+  width: 100%;
+}
+
+.fm-drive-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 30px;
+  background: #2d2d30;
+  border: 2px solid #3e3e42;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.fm-drive-card:hover {
+  background: #3e3e42;
+  border-color: #007acc;
+  transform: translateY(-4px);
+  box-shadow: 0 4px 12px rgba(0, 122, 204, 0.3);
+}
+
+.fm-drive-icon {
+  font-size: 64px;
+  margin-bottom: 15px;
+}
+
+.fm-drive-label {
+  font-size: 24px;
+  font-weight: 600;
+  color: #d4d4d4;
+}
+
+/* Toolbar */
+.fm-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  background: #2d2d30;
+  border-bottom: 1px solid #3e3e42;
+  flex-wrap: wrap;
+}
+
+.fm-nav-buttons {
+  display: flex;
+  gap: 5px;
+}
+
+.fm-nav-buttons button,
+.fm-action-buttons button {
+  padding: 6px 12px;
+  background: #3e3e42;
+  border: 1px solid #555;
+  color: #d4d4d4;
+  cursor: pointer;
+  border-radius: 3px;
+  font-size: 14px;
+}
+
+.fm-nav-buttons button:hover:not(:disabled),
+.fm-action-buttons button:hover:not(:disabled) {
+  background: #505050;
+}
+
+.fm-nav-buttons button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Drives selector */
+.fm-drives {
+  display: flex;
+  gap: 5px;
+}
+
+.fm-drive-btn {
+  padding: 6px 12px;
+  background: #3e3e42;
+  border: 1px solid #555;
+  color: #d4d4d4;
+  cursor: pointer;
+  border-radius: 3px;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+
+.fm-drive-btn:hover {
+  background: #505050;
+  border-color: #666;
+}
+
+.fm-drive-btn.active {
+  background: #094771;
+  border-color: #007acc;
+  color: #fff;
+}
+
+.fm-path-bar {
+  flex: 1;
+  min-width: 200px;
+}
+
+.fm-path-bar input {
+  width: 100%;
+  padding: 6px 10px;
+  background: #3c3c3c;
+  border: 1px solid #555;
+  color: #d4d4d4;
+  border-radius: 3px;
+  font-size: 14px;
+}
+
+.fm-path-bar input:focus {
+  outline: none;
+  border-color: #007acc;
+}
+
+.fm-action-buttons {
+  display: flex;
+  gap: 5px;
+}
+
+/* Content Area */
+.fm-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+  position: relative;
+}
+
+.fm-loading,
+.fm-empty {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  color: #888;
+  font-size: 16px;
+}
+
+.fm-items {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.fm-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px;
+  background: #252526;
+  border: 2px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+  word-break: break-word;
+  text-align: center;
+}
+
+.fm-item:hover {
+  background: #2d2d30;
+  border-color: #3e3e42;
+}
+
+.fm-item.selected {
+  background: #094771;
+  border-color: #007acc;
+}
+
+.fm-item-icon {
+  font-size: 48px;
+  margin-bottom: 8px;
+}
+
+.fm-item-info {
+  width: 100%;
+}
+
+.fm-item-name {
+  font-size: 13px;
+  color: #d4d4d4;
+  margin-bottom: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fm-item-details {
+  font-size: 11px;
+  color: #888;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Status Bar */
+.fm-statusbar {
+  padding: 6px 10px;
+  background: #007acc;
+  color: white;
+  font-size: 12px;
+  border-top: 1px solid #3e3e42;
+}
+
+/* Context Menu */
+.fm-context-menu {
+  position: fixed;
+  background: #252526;
+  border: 1px solid #454545;
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  z-index: 10000;
+  min-width: 180px;
+  padding: 4px 0;
+}
+
+.fm-menu-item {
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #d4d4d4;
+  transition: background 0.2s;
+}
+
+.fm-menu-item:hover {
+  background: #094771;
+}
+
+.fm-menu-divider {
+  height: 1px;
+  background: #454545;
+  margin: 4px 0;
+}
+
+/* Dialog */
+.fm-dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+}
+
+.fm-dialog {
+  background: #2d2d30;
+  border: 1px solid #454545;
+  border-radius: 4px;
+  padding: 20px;
+  min-width: 400px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.fm-dialog-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 15px;
+  color: #d4d4d4;
+}
+
+.fm-dialog input {
+  width: 100%;
+  padding: 8px 12px;
+  background: #3c3c3c;
+  border: 1px solid #555;
+  color: #d4d4d4;
+  border-radius: 3px;
+  font-size: 14px;
+  margin-bottom: 15px;
+}
+
+.fm-dialog input:focus {
+  outline: none;
+  border-color: #007acc;
+}
+
+.fm-dialog-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.fm-dialog-buttons button {
+  padding: 8px 20px;
+  background: #0e639c;
+  border: 1px solid #007acc;
+  color: white;
+  cursor: pointer;
+  border-radius: 3px;
+  font-size: 14px;
+}
+
+.fm-dialog-buttons button:hover {
+  background: #1177bb;
+}
+
+.fm-dialog-buttons button:last-child {
+  background: #3e3e42;
+  border-color: #555;
+}
+
+.fm-dialog-buttons button:last-child:hover {
+  background: #505050;
+}
+
+/* File Editor */
+.fm-editor-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9998;
+  padding: 20px;
+}
+
+.fm-editor {
+  background: #1e1e1e;
+  border: 1px solid #454545;
+  border-radius: 4px;
+  width: 90%;
+  max-width: 1200px;
+  height: 80%;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.fm-editor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: #2d2d30;
+  border-bottom: 1px solid #454545;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.fm-editor-header button {
+  background: transparent;
+  border: none;
+  color: #d4d4d4;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 3px;
+}
+
+.fm-editor-header button:hover {
+  background: #505050;
+}
+
+.fm-editor-content {
+  flex: 1;
+  padding: 16px;
+  background: #1e1e1e;
+  color: #d4d4d4;
+  border: none;
+  resize: none;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.fm-editor-content:focus {
+  outline: none;
+}
+
+.fm-editor-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 16px;
+  background: #2d2d30;
+  border-top: 1px solid #454545;
+}
+
+.fm-editor-footer button {
+  padding: 8px 20px;
+  background: #0e639c;
+  border: 1px solid #007acc;
+  color: white;
+  cursor: pointer;
+  border-radius: 3px;
+  font-size: 14px;
+}
+
+.fm-editor-footer button:hover {
+  background: #1177bb;
+}
+
+.fm-editor-footer button:last-child {
+  background: #3e3e42;
+  border-color: #555;
+}
+
+.fm-editor-footer button:last-child:hover {
+  background: #505050;
+}
+
+/* Scrollbar */
+.fm-content::-webkit-scrollbar,
+.fm-editor-content::-webkit-scrollbar {
+  width: 10px;
+}
+
+.fm-content::-webkit-scrollbar-track,
+.fm-editor-content::-webkit-scrollbar-track {
+  background: #1e1e1e;
+}
+
+.fm-content::-webkit-scrollbar-thumb,
+.fm-editor-content::-webkit-scrollbar-thumb {
+  background: #424242;
+  border-radius: 5px;
+}
+
+.fm-content::-webkit-scrollbar-thumb:hover,
+.fm-editor-content::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+/* Custom Notification System */
+.fm-notification-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10000;
+  animation: fadeIn 0.2s ease;
+}
+
+.fm-notification {
+  background: #252526;
+  border: 1px solid #454545;
+  border-radius: 8px;
+  min-width: 400px;
+  max-width: 500px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  animation: slideIn 0.3s ease;
+}
+
+.fm-notification-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 24px 16px 24px;
+  border-bottom: 1px solid #3e3e42;
+}
+
+.fm-notification-icon {
+  font-size: 32px;
+  line-height: 1;
+}
+
+.fm-notification-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #d4d4d4;
+  flex: 1;
+}
+
+.fm-notification-message {
+  padding: 20px 24px;
+  font-size: 14px;
+  color: #cccccc;
+  line-height: 1.6;
+  word-wrap: break-word;
+}
+
+.fm-notification-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 24px;
+  background: #2d2d30;
+  border-top: 1px solid #3e3e42;
+  border-radius: 0 0 8px 8px;
+}
+
+.fm-notification-buttons button {
+  padding: 8px 24px;
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.fm-btn-confirm {
+  background: #0e639c;
+  color: white;
+}
+
+.fm-btn-confirm:hover {
+  background: #1177bb;
+  box-shadow: 0 2px 8px rgba(14, 99, 156, 0.4);
+}
+
+.fm-btn-cancel {
+  background: #3e3e42;
+  color: #d4d4d4;
+}
+
+.fm-btn-cancel:hover {
+  background: #505050;
+}
+
+.fm-btn-ok {
+  background: #0e639c;
+  color: white;
+  min-width: 80px;
+}
+
+.fm-btn-ok:hover {
+  background: #1177bb;
+  box-shadow: 0 2px 8px rgba(14, 99, 156, 0.4);
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideIn {
+  from {
+    transform: scale(0.9) translateY(-20px);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+}

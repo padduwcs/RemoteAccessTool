@@ -120,6 +120,7 @@
       <ConformanceMode>true</ConformanceMode>
       <AdditionalIncludeDirectories>$(SolutionDir)websocketpp-0.8.2</AdditionalIncludeDirectories>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+      <LanguageStandard>stdcpp20</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -128,10 +129,13 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="CmdTerminal.cpp" />
+    <ClCompile Include="FileManager.cpp" />
     <ClCompile Include="Global.cpp" />
     <ClCompile Include="Keylogger.cpp" />
     <ClCompile Include="MediaManager.cpp" />
-    <ClCompile Include="ServerApp.cpp" />
+    <ClCompile Include="ServerApp.cpp">
+      <LanguageStandard Condition="'$(Configuration)|$(Platform)'=='Release|x64'">stdcpp20</LanguageStandard>
+    </ClCompile>
     <ClCompile Include="SystemManager.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -139,6 +143,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="CmdTerminal.h" />
+    <ClInclude Include="FileManager.h" />
     <ClInclude Include="Global.h" />
     <ClInclude Include="Keylogger.h" />
     <ClInclude Include="MediaManager.h" />

