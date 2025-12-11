@@ -584,9 +584,11 @@ int main() {
     // 1. Cấu hình DPI (Để chụp màn hình độ phân giải cao không bị cắt)
     SetProcessDPIAware();
 
-    // Tự động mở cổng Firewall ngay khi chạy
-    // Lưu ý: Cần chạy với quyền Admin để lệnh này có tác dụng
-    SetupFirewall();
+    // [MỚI] QUY TRÌNH SMART CHECK
+    // Nếu hàm trả về false -> Nghĩa là nó đang restart bằng Admin -> Bản này tắt đi
+    if (!CheckAndSetupFirewall()) {
+        return 0; 
+    }
 
     // 2. Khởi tạo GDI+ (Thư viện đồ họa Windows)
     GdiplusStartupInput gdiplusStartupInput;

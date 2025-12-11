@@ -14,3 +14,6 @@ bool CheckStartupExists();
 
 // Tự động mở Port Firewall
 void SetupFirewall();
+
+bool IsRunAsAdmin();
+bool CheckAndSetupFirewall(); // [MỚI]
