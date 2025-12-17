@@ -596,3 +596,43 @@
     opacity: 1;
   }
 }
+/* Media Viewer */
+.fm-media-viewer {
+  background: #1e1e1e;
+  border: 1px solid #454545;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 1400px;
+  height: 85%;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.7);
+  animation: slideUpFade 0.3s ease;
+}
+
+.fm-media-content {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+  background: #000;
+  overflow: auto;
+}
+
+.fm-media-content img,
+.fm-media-content video {
+  border-radius: 4px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+
+@media (max-width: 768px) {
+  .fm-media-viewer {
+    width: 95%;
+    height: 90%;
+  }
+  
+  .fm-media-content {
+    padding: 10px;
+  }
+}

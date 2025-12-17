@@ -343,14 +343,16 @@ body {
 }
 
 .btn-command {
+  flex: 1;
   background: rgba(59, 130, 246, 0.15);
   color: #93c5fd;
   border: 1px solid rgba(59, 130, 246, 0.3);
   border-radius: 10px;
   padding: 12px 20px;
-  margin: 6px;
   font-size: 14px;
-  max-width: fit-content;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
 }
 
 .btn-command:hover:not(:disabled) {
@@ -2438,12 +2440,12 @@ button:disabled {
 
 .btn-stream {
   flex: 1;
-  padding: 10px;
+  padding: 12px 20px;
   background: linear-gradient(135deg, rgba(34, 197, 94, 0.2) 0%, rgba(22, 163, 74, 0.2) 100%);
   color: #4ade80;
   border: 1px solid rgba(34, 197, 94, 0.4);
-  border-radius: 8px;
-  font-size: 13px;
+  border-radius: 10px;
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.3s ease;
@@ -2742,4 +2744,293 @@ button:disabled {
   }
 }
 
+/* ============================================
+   REMOTE CONTROL INTERFACE - NEW DESIGN
+   ============================================ */
 
+.remote-control-interface {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 100px);
+  background: #000;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.remote-control-interface.fullscreen-mode {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 100vh;
+  border-radius: 0;
+  z-index: 9999;
+}
+
+.rc-control-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.98) 0%, rgba(30, 41, 59, 0.98) 100%);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+  backdrop-filter: blur(20px);
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.rc-control-left, .rc-control-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.rc-status-badges {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.rc-badge {
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: 'JetBrains Mono', monospace;
+  white-space: nowrap;
+}
+
+.rc-badge-live {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.3) 0%, rgba(220, 38, 38, 0.3) 100%);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.5);
+  animation: pulse-glow 2s infinite;
+}
+
+.rc-badge-info {
+  background: rgba(59, 130, 246, 0.15);
+  color: #93c5fd;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 8px rgba(239, 68, 68, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 16px rgba(239, 68, 68, 0.6);
+  }
+}
+
+.rc-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #cbd5e1;
+  font-size: 13px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.rc-checkbox-label input[type="checkbox"] {
+  cursor: pointer;
+}
+
+.rc-scale-select {
+  padding: 6px 12px;
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 6px;
+  color: #cbd5e1;
+  font-size: 13px;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.rc-scale-select:hover {
+  background: rgba(30, 41, 59, 1);
+  border-color: rgba(148, 163, 184, 0.5);
+}
+
+.rc-scale-select:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.rc-screen-container {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+  position: relative;
+  overflow: hidden;
+  padding: 20px;
+}
+
+.rc-screen-container.rc-active {
+  background: radial-gradient(circle at center, rgba(236, 72, 153, 0.05) 0%, #000 100%);
+}
+
+.rc-canvas {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8);
+  transition: all 0.3s ease;
+}
+
+.rc-canvas.fit {
+  object-fit: contain;
+}
+
+.rc-canvas.fill {
+  object-fit: cover;
+  width: 100%;
+  height: 100%;
+}
+
+.rc-canvas.actual {
+  object-fit: none;
+  max-width: none;
+  max-height: none;
+}
+
+.rc-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
+}
+
+.rc-loading .spinner {
+  margin-bottom: 20px;
+}
+
+.rc-loading p {
+  font-size: 14px;
+  color: #94a3b8;
+}
+
+.rc-status-overlay {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.rc-status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 24px;
+  background: rgba(236, 72, 153, 0.95);
+  border: 2px solid rgba(236, 72, 153, 1);
+  border-radius: 12px;
+  backdrop-filter: blur(20px);
+  box-shadow: 0 8px 32px rgba(236, 72, 153, 0.5);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  animation: slideInDown 0.5s ease;
+}
+
+.rc-pulse {
+  width: 12px;
+  height: 12px;
+  background: #fff;
+  border-radius: 50%;
+  animation: pulse-dot 1.5s infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(1.2);
+  }
+}
+
+.rc-stealth-indicator {
+  padding: 10px 20px;
+  background: rgba(251, 191, 36, 0.95);
+  border: 2px solid rgba(251, 191, 36, 1);
+  border-radius: 10px;
+  backdrop-filter: blur(20px);
+  box-shadow: 0 8px 32px rgba(251, 191, 36, 0.5);
+  color: #000;
+  font-size: 13px;
+  font-weight: 600;
+  animation: slideInDown 0.5s ease 0.2s both;
+}
+
+@keyframes slideInDown {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.rc-help-overlay {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 10px 20px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 8px;
+  color: #94a3b8;
+  font-size: 13px;
+  backdrop-filter: blur(10px);
+  animation: fadeIn 0.5s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Responsive adjustments for remote control */
+@media (max-width: 768px) {
+  .rc-control-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .rc-control-left, .rc-control-right {
+    width: 100%;
+    justify-content: space-between;
+  }
+  
+  .rc-status-badges {
+    flex-wrap: wrap;
+  }
+  
+  .rc-screen-container {
+    padding: 10px;
+  }
+}

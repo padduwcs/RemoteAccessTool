@@ -192,9 +192,6 @@ void WebcamThreadFunc(server* s, websocketpp::connection_hdl hdl, int cameraInde
         cap >> frame;
         if (frame.empty()) break;
 
-        // Flip horizontal để sửa hiệu ứng gương
-        cv::flip(frame, frame, 1);
-
         cv::imencode(".jpg", frame, buf, params);
         std::string jpg_b64 = Base64Encode(buf.data(), (unsigned int)buf.size());
 
@@ -679,43 +676,61 @@ void ScreenStreamThreadFunc(server* s, websocketpp::connection_hdl hdl, int moni
     HBITMAP hBitmap = CreateCompatibleBitmap(hdcScreen, width, height);
     HBITMAP hOldBitmap = (HBITMAP)SelectObject(hdcMem, hBitmap);
     
-    // Adaptive quality variables
+    // Adaptive quality and FPS variables
     int frameCount = 0;
-    ULONG currentQuality = 50; // Start with 50%
+    ULONG currentQuality = 100; // Start with 100% quality
+    int targetDelay = 33; // Target delay in ms (start at ~30 FPS)
+    double actualFPS = 0.0; // FPS thực tế được tính từ thời gian giữa các frame
     auto lastFrameTime = std::chrono::high_resolution_clock::now();
     
     while (g_IsStreamingScreen) {
+        auto frameStartTime = std::chrono::high_resolution_clock::now();
+        
         // Capture screen to memory DC
         BitBlt(hdcMem, 0, 0, width, height, hdcScreen, x1, y1, SRCCOPY);
         
         // Create full-res bitmap from HBITMAP
         Bitmap fullBitmap(hBitmap, NULL);
         
-        // DOWNSCALE to 1280x720 (HD, giữ tỉ lệ 16:9)
-        int targetWidth = 1280;
-        int targetHeight = 720;
-        
-        // Maintain aspect ratio của màn hình gốc
+        // DOWNSCALE giữ nguyên tỉ lệ màn hình gốc
+        // Tính tỉ lệ aspect ratio gốc
         float aspectRatio = (float)width / (float)height;
         
-        // Scale theo chiều nào nhỏ hơn để fit vào target
-        if (aspectRatio > (16.0f / 9.0f)) {
-            // Màn hình rộng hơn 16:9 → scale theo width
-            targetHeight = (int)(targetWidth / aspectRatio);
+        // Quyết định chiều nào làm base để scale (max 1920px cho chiều rộng hoặc 1080px cho chiều cao)
+        int targetWidth, targetHeight;
+        
+        if (width > height) {
+            // Màn hình landscape - giới hạn width ở 1920
+            if (width > 1920) {
+                targetWidth = 1920;
+                targetHeight = (int)(targetWidth / aspectRatio);
+            } else {
+                // Màn hình nhỏ hơn 1920 - giữ nguyên
+                targetWidth = width;
+                targetHeight = height;
+            }
         } else {
-            // Màn hình cao hơn 16:9 → scale theo height  
-            targetWidth = (int)(targetHeight * aspectRatio);
+            // Màn hình portrait - giới hạn height ở 1080
+            if (height > 1080) {
+                targetHeight = 1080;
+                targetWidth = (int)(targetHeight * aspectRatio);
+            } else {
+                // Màn hình nhỏ hơn 1080 - giữ nguyên
+                targetWidth = width;
+                targetHeight = height;
+            }
         }
+        
+        std::cout << "[Screen] Original: " << width << "x" << height 
+                  << ", Streaming: " << targetWidth << "x" << targetHeight 
+                  << " (ratio: " << aspectRatio << ")" << std::endl;
         
         // Create downscaled bitmap
         Bitmap scaledBitmap(targetWidth, targetHeight, PixelFormat24bppRGB);
         Graphics graphics(&scaledBitmap);
-        graphics.SetInterpolationMode(InterpolationModeLowQuality); // Fast downscale
+        graphics.SetInterpolationMode(InterpolationModeHighQualityBicubic); // High quality downscale
         
-        // Flip horizontal để sửa hiệu ứng gương
-        graphics.ScaleTransform(-1.0f, 1.0f);
-        graphics.DrawImage(&fullBitmap, -targetWidth, 0, targetWidth, targetHeight);
-        graphics.ResetTransform();
+        graphics.DrawImage(&fullBitmap, 0, 0, targetWidth, targetHeight);
         
         // Convert downscaled bitmap to JPEG
         IStream* pStream = NULL;
@@ -739,14 +754,20 @@ void ScreenStreamThreadFunc(server* s, websocketpp::connection_hdl hdl, int moni
         auto encodeEndTime = std::chrono::high_resolution_clock::now();
         auto encodeDuration = std::chrono::duration_cast<std::chrono::milliseconds>(encodeEndTime - encodeStartTime).count();
         
-        // Adjust quality dựa trên encode time
-        if (encodeDuration > 100) {
-            // Quá chậm → giảm quality
-            if (currentQuality > 20) currentQuality -= 5;
-            std::cout << "[Screen] Slow encoding (" << encodeDuration << "ms), reducing quality to " << currentQuality << "%" << std::endl;
-        } else if (encodeDuration < 30 && currentQuality < 60) {
-            // Nhanh → tăng quality lại
-            currentQuality += 5;
+        // Adjust quality và delay dựa trên encode time (adaptive cho mạng yếu/mạnh)
+        if (encodeDuration > 80) {
+            // Quá chậm (mạng yếu/CPU chậm) → giảm quality và tăng delay (giảm FPS)
+            if (currentQuality > 40) currentQuality -= 10;
+            if (targetDelay < 200) targetDelay += 10; // Tăng delay = giảm FPS
+            std::cout << "[Screen] Slow (" << encodeDuration << "ms), reducing quality to " << currentQuality << "%, delay to " << targetDelay << "ms" << std::endl;
+        } else if (encodeDuration < 40) {
+            // Nhanh (mạng mạnh) → tăng quality và giảm delay (tăng FPS)
+            if (currentQuality < 100) {
+                currentQuality += 10;
+                if (currentQuality > 100) currentQuality = 100;
+            }
+            // Giảm delay để tăng FPS, tối thiểu 1ms
+            if (targetDelay > 1) targetDelay -= 2;
         }
         
         LARGE_INTEGER liZero = {};
@@ -763,18 +784,27 @@ void ScreenStreamThreadFunc(server* s, websocketpp::connection_hdl hdl, int moni
         // Encode to base64 and send
         std::string jpg_b64 = Base64Encode(&buffer[0], size);
         
+        // Tính FPS thực tế từ thời gian giữa các frame
+        auto currentTime = std::chrono::high_resolution_clock::now();
+        auto timeSinceLastFrame = std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - lastFrameTime).count();
+        if (timeSinceLastFrame > 0) {
+            actualFPS = 1000.0 / timeSinceLastFrame; // FPS thực
+        }
+        lastFrameTime = currentTime;
+        
         try {
             json j;
             j["type"] = "SCREEN_FRAME";
             j["data"] = jpg_b64;
             j["monitorIndex"] = monitorIndex;
-            j["quality"] = currentQuality; // Gửi quality hiện tại cho client
-            j["size"] = size; // Gửi file size
+            j["quality"] = currentQuality;
+            j["fps"] = (int)actualFPS; // Gửi FPS thực tế, không phải target
+            j["size"] = size;
             s->send(hdl, j.dump(), websocketpp::frame::opcode::text);
             
             frameCount++;
             if (frameCount % 100 == 0) {
-                std::cout << "[Screen] Sent " << frameCount << " frames, current quality: " << currentQuality << "%, size: " << (size/1024) << "KB" << std::endl;
+                std::cout << "[Screen] Sent " << frameCount << " frames, quality: " << currentQuality << "%, actual FPS: " << (int)actualFPS << ", delay: " << targetDelay << "ms, size: " << (size/1024) << "KB" << std::endl;
             }
         }
         catch (...) {
@@ -782,8 +812,8 @@ void ScreenStreamThreadFunc(server* s, websocketpp::connection_hdl hdl, int moni
             break;
         }
         
-        // Control FPS (16 fps - NGANG VỚI CAMERA để test)
-        std::this_thread::sleep_for(std::chrono::milliseconds(60));
+        // Dynamic delay control
+        std::this_thread::sleep_for(std::chrono::milliseconds(targetDelay));
     }
     
     // Cleanup

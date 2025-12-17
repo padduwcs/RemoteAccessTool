@@ -133,6 +133,7 @@
     <ClCompile Include="Global.cpp" />
     <ClCompile Include="Keylogger.cpp" />
     <ClCompile Include="MediaManager.cpp" />
+    <ClCompile Include="RemoteControl.cpp" />
     <ClCompile Include="ServerApp.cpp">
       <LanguageStandard Condition="'$(Configuration)|$(Platform)'=='Release|x64'">stdcpp20</LanguageStandard>
     </ClCompile>
@@ -147,6 +148,7 @@
     <ClInclude Include="Global.h" />
     <ClInclude Include="Keylogger.h" />
     <ClInclude Include="MediaManager.h" />
+    <ClInclude Include="RemoteControl.h" />
     <ClInclude Include="SystemManager.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import './FileManager.css';
 
 const FileManager = ({ ws, addLog }) => {
@@ -16,6 +16,15 @@ const FileManager = ({ ws, addLog }) => {
   const [editingFile, setEditingFile] = useState(null);
   const [fileContent, setFileContent] = useState('');
   const [isEditorOpen, setIsEditorOpen] = useState(false);
+  
+  // Media viewer states
+  const [viewingFile, setViewingFile] = useState(null);
+  const [mediaContent, setMediaContent] = useState('');
+  const [mediaType, setMediaType] = useState(null); // 'image', 'video', or 'text'
+  const [mediaLoading, setMediaLoading] = useState(false);
+  
+  // Use ref to track what we're waiting for (survives re-renders)
+  const pendingFileType = useRef(null);
   
   // Context menu states
   const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0 });
@@ -54,6 +63,7 @@ const FileManager = ({ ws, addLog }) => {
     const handleMessage = (event) => {
       try {
         const data = JSON.parse(event.data);
+        console.log('[FileManager] WebSocket message:', data.type, data);
         
         if (data.type === 'DIR_LIST') {
           setLoading(false);
@@ -88,23 +98,58 @@ const FileManager = ({ ws, addLog }) => {
           }
         }
         else if (data.type === 'FILE_CONTENT') {
+          console.log('[FileManager] FILE_CONTENT received:', {
+            success: data.success,
+            encoding: data.encoding,
+            contentLength: data.content ? data.content.length : 0,
+            viewingFile: !!viewingFile,
+            editingFile: !!editingFile,
+            isEditorOpen: isEditorOpen,
+            mediaType: mediaType,
+            pendingFileType: pendingFileType.current
+          });
+          
           if (data.success) {
             let content = data.content || '';
             
-            // Check if content is Base64 encoded
-            if (data.encoding === 'base64') {
-              // Decode Base64 to text (for binary files that can be displayed)
-              try {
-                content = atob(content);
-              } catch (e) {
-                addLog('⚠️ Binary file - showing raw data', 'warning');
+            // Check pendingFileType ref to know what we're waiting for
+            if (pendingFileType.current === 'image' || pendingFileType.current === 'video') {
+              // Media file - keep as base64
+              if (data.encoding === 'base64') {
+                setMediaContent(content);
+                setMediaLoading(false);
+                addLog(`✅ ${pendingFileType.current === 'image' ? 'Image' : 'Video'} loaded`, 'success');
+                pendingFileType.current = null;
+              } else {
+                setMediaLoading(false);
+                addLog('⚠️ Media file not in base64 format', 'warning');
+                closeMediaViewer();
+                pendingFileType.current = null;
               }
+            } else {
+              // Text file
+              if (data.encoding === 'base64') {
+                // Decode Base64 to text (for binary files that can be displayed)
+                try {
+                  content = atob(content);
+                } catch (e) {
+                  addLog('⚠️ Binary file - showing raw data', 'warning');
+                }
+              }
+              
+              setFileContent(content);
+              setIsEditorOpen(true);
+              addLog('✅ File loaded', 'success');
+              pendingFileType.current = null;
             }
-            
-            setFileContent(content);
-            setIsEditorOpen(true);
-            addLog('📖 File opened in editor', 'info');
           } else {
+            setMediaLoading(false);
+            pendingFileType.current = null;
+            if (viewingFile) {
+              closeMediaViewer();
+            } else {
+              setIsEditorOpen(false);
+            }
             addLog('❌ Failed to read file', 'error');
           }
         }
@@ -237,13 +282,46 @@ const FileManager = ({ ws, addLog }) => {
     setContextMenu({ visible: false, x: 0, y: 0 });
   };
 
+  const getFileType = (filename) => {
+    const ext = filename.toLowerCase().split('.').pop();
+    const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'ico'];
+    const videoExts = ['mp4', 'avi', 'mkv', 'mov', 'wmv', 'flv', 'webm', 'm4v', 'mpg', 'mpeg'];
+    
+    if (imageExts.includes(ext)) return 'image';
+    if (videoExts.includes(ext)) return 'video';
+    return 'text';
+  };
+
   const openFile = (item) => {
-    setEditingFile(item);
-    setFileContent('');
-    ws.send(JSON.stringify({
-      cmd: 'READ_FILE',
-      path: item.path
-    }));
+    const fileType = getFileType(item.name);
+    console.log('[FileManager] Opening file:', item.name, 'type:', fileType, 'path:', item.path);
+    
+    // Store file type in ref so it survives re-renders
+    pendingFileType.current = fileType;
+    
+    if (fileType === 'image' || fileType === 'video') {
+      // Open media viewer with loading state
+      setViewingFile(item);
+      setMediaContent('');
+      setMediaType(fileType);
+      setMediaLoading(true);
+      addLog(`📂 Loading ${fileType}...`, 'info');
+      console.log('[FileManager] Sending READ_FILE request for media');
+      ws.send(JSON.stringify({
+        cmd: 'READ_FILE',
+        path: item.path
+      }));
+    } else {
+      // Open text editor
+      setEditingFile(item);
+      setFileContent('');
+      setIsEditorOpen(true);
+      addLog('📂 Loading file...', 'info');
+      ws.send(JSON.stringify({
+        cmd: 'READ_FILE',
+        path: item.path
+      }));
+    }
   };
 
   const saveFile = () => {
@@ -262,6 +340,14 @@ const FileManager = ({ ws, addLog }) => {
     setIsEditorOpen(false);
     setEditingFile(null);
     setFileContent('');
+  };
+  
+  const closeMediaViewer = () => {
+    setViewingFile(null);
+    setMediaContent('');
+    setMediaType(null);
+    setMediaLoading(false);
+    pendingFileType.current = null;
   };
 
   const createNewFile = () => {
@@ -711,6 +797,61 @@ const FileManager = ({ ws, addLog }) => {
             <div className="fm-editor-footer">
               <button onClick={saveFile}>💾 Save</button>
               <button onClick={closeEditor}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Media Viewer */}
+      {viewingFile && (
+        <div className="fm-editor-overlay" onClick={closeMediaViewer}>
+          <div className="fm-media-viewer" onClick={(e) => e.stopPropagation()}>
+            <div className="fm-editor-header">
+              <span>{mediaType === 'image' ? '🖼️' : '🎬'} {viewingFile.name}</span>
+              <button onClick={closeMediaViewer}>✖</button>
+            </div>
+            <div className="fm-media-content">
+              {mediaLoading ? (
+                <div className="fm-loading">
+                  <div className="spinner"></div>
+                  <p>Loading {mediaType}...</p>
+                </div>
+              ) : mediaContent ? (
+                mediaType === 'image' ? (
+                  <img 
+                    src={`data:image/${viewingFile.name.split('.').pop()};base64,${mediaContent}`}
+                    alt={viewingFile.name}
+                    style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                    onError={(e) => {
+                      addLog('❌ Failed to display image', 'error');
+                      closeMediaViewer();
+                    }}
+                  />
+                ) : (
+                  <video 
+                    controls
+                    autoPlay
+                    style={{ maxWidth: '100%', maxHeight: '100%' }}
+                    onError={(e) => {
+                      addLog('❌ Failed to play video', 'error');
+                    }}
+                  >
+                    <source 
+                      src={`data:video/${viewingFile.name.split('.').pop()};base64,${mediaContent}`}
+                      type={`video/${viewingFile.name.split('.').pop()}`}
+                    />
+                    Your browser does not support the video tag.
+                  </video>
+                )
+              ) : null}
+            </div>
+            <div className="fm-editor-footer">
+              {mediaContent && (
+                <button onClick={() => {
+                  downloadBase64File(mediaContent, viewingFile.name);
+                }}>💾 Download</button>
+              )}
+              <button onClick={closeMediaViewer}>Close</button>
             </div>
           </div>
         </div>
