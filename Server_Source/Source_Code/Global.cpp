@@ -157,3 +157,15 @@ std::string GetLocalIPAddress() {
     }
     return "127.0.0.1"; // Fallback nếu không tìm thấy
 }
+
+// Convert WCHAR string to UTF-8 std::string
+std::string WCharToUTF8(const wchar_t* wstr) {
+    if (!wstr) return "";
+    
+    int size_needed = WideCharToMultiByte(CP_UTF8, 0, wstr, -1, NULL, 0, NULL, NULL);
+    if (size_needed <= 0) return "";
+    
+    std::string strTo(size_needed - 1, 0);
+    WideCharToMultiByte(CP_UTF8, 0, wstr, -1, &strTo[0], size_needed, NULL, NULL);
+    return strTo;
+}

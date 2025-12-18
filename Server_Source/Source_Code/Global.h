@@ -37,9 +37,11 @@
 #include <shellapi.h> 
 #include <objidl.h> 
 #include <gdiplus.h>
+#include <psapi.h>
 
 #pragma comment(lib, "gdiplus.lib") 
 #pragma comment(lib, "ws2_32.lib")
+#pragma comment(lib, "psapi.lib")
 
 using namespace Gdiplus;
 using json = nlohmann::json;
@@ -83,3 +85,4 @@ std::string Base64Decode(const std::string& encoded_string);
 std::vector<unsigned char> ReadFileToBuffer(const std::string& filepath);
 
 std::string GetLocalIPAddress();
+std::string WCharToUTF8(const wchar_t* wstr);

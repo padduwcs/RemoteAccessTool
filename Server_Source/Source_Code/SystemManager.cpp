@@ -1,5 +1,34 @@
 ﻿#include "SystemManager.h"
 
+// Helper function to convert TCHAR to std::string
+std::string TCharToString(const TCHAR* tcharStr) {
+#ifdef UNICODE
+    int len = WideCharToMultiByte(CP_UTF8, 0, tcharStr, -1, NULL, 0, NULL, NULL);
+    if (len == 0) return "";
+    std::string result(len - 1, 0);
+    WideCharToMultiByte(CP_UTF8, 0, tcharStr, -1, &result[0], len, NULL, NULL);
+    return result;
+#else
+    return std::string(tcharStr);
+#endif
+}
+
+// Hàm lấy memory usage của một process (KB)
+DWORD GetProcessMemoryUsage(DWORD pid) {
+    HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
+    if (hProcess == NULL) return 0;
+
+    PROCESS_MEMORY_COUNTERS pmc;
+    DWORD memoryKB = 0;
+
+    if (GetProcessMemoryInfo(hProcess, &pmc, sizeof(pmc))) {
+        memoryKB = (DWORD)(pmc.WorkingSetSize / 1024); // Convert bytes to KB
+    }
+
+    CloseHandle(hProcess);
+    return memoryKB;
+}
+
 std::vector<std::string> GetProcessList() {
     std::vector<std::string> listProc;
     HANDLE hProcessSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
@@ -17,7 +46,15 @@ std::vector<std::string> GetProcessList() {
     }
 
     do {
-        listProc.push_back(std::string(pe32.szExeFile) + " | " + std::to_string(pe32.th32ProcessID));
+        DWORD memoryKB = GetProcessMemoryUsage(pe32.th32ProcessID);
+        std::string exeName = TCharToString(pe32.szExeFile);
+        
+        // Format: "processname.exe | PID | MemoryKB"
+        listProc.push_back(
+            exeName + " | " + 
+            std::to_string(pe32.th32ProcessID) + " | " + 
+            std::to_string(memoryKB)
+        );
     } while (Process32Next(hProcessSnap, &pe32));
 
     CloseHandle(hProcessSnap);
@@ -51,7 +88,9 @@ int KillProcessByName(std::string targetInput) {
     }
 
     do {
-        if (ToLower(pe32.szExeFile) == target) {
+        std::string exeName = TCharToString(pe32.szExeFile);
+        
+        if (ToLower(exeName) == target) {
             if (KillProcessByPID(pe32.th32ProcessID)) {
                 killCount++;
             }
@@ -209,4 +248,217 @@ bool CheckAndSetupFirewall() {
         ShellExecuteA(NULL, "runas", path, NULL, NULL, SW_SHOW);
         return false; // Báo cho main() biết để tự tắt bản user này đi
     }
+}
+
+// =============================================================================
+// QUẢN LÝ INSTALLED APPLICATIONS
+// =============================================================================
+
+// Helper: Get process name from PID
+std::string GetProcessNameFromPID(DWORD pid) {
+    HANDLE hProcessSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (hProcessSnap == INVALID_HANDLE_VALUE) return "";
+
+    PROCESSENTRY32 pe32;
+    pe32.dwSize = sizeof(PROCESSENTRY32);
+
+    if (Process32First(hProcessSnap, &pe32)) {
+        do {
+            if (pe32.th32ProcessID == pid) {
+                std::string exeName = TCharToString(pe32.szExeFile);
+                CloseHandle(hProcessSnap);
+                return exeName;
+            }
+        } while (Process32Next(hProcessSnap, &pe32));
+    }
+
+    CloseHandle(hProcessSnap);
+    return "";
+}
+
+// Helper: Get all PIDs for a process name
+std::vector<DWORD> GetPIDsByProcessName(const std::string& processName) {
+    std::vector<DWORD> pids;
+    std::string lowerName = ToLower(processName);
+    
+    HANDLE hProcessSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (hProcessSnap == INVALID_HANDLE_VALUE) return pids;
+
+    PROCESSENTRY32 pe32;
+    pe32.dwSize = sizeof(PROCESSENTRY32);
+
+    if (Process32First(hProcessSnap, &pe32)) {
+        do {
+            std::string exeName = TCharToString(pe32.szExeFile);
+            
+            if (ToLower(exeName) == lowerName) {
+                pids.push_back(pe32.th32ProcessID);
+            }
+        } while (Process32Next(hProcessSnap, &pe32));
+    }
+
+    CloseHandle(hProcessSnap);
+    return pids;
+}
+
+// Get list of installed applications from Registry
+std::vector<AppInfo> GetInstalledApplications() {
+    std::vector<AppInfo> apps;
+    std::set<std::string> addedApps; // To avoid duplicates
+
+    // Registry paths to check for installed applications
+    const wchar_t* registryPaths[] = {
+        L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall",
+        L"SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall"
+    };
+
+    for (const wchar_t* regPath : registryPaths) {
+        HKEY hUninstallKey;
+        if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, regPath, 0, KEY_READ, &hUninstallKey) == ERROR_SUCCESS) {
+            DWORD subKeyCount = 0;
+            RegQueryInfoKeyW(hUninstallKey, NULL, NULL, NULL, &subKeyCount, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+
+            for (DWORD i = 0; i < subKeyCount; i++) {
+                wchar_t subKeyName[256];
+                DWORD subKeyNameSize = 256;
+                
+                if (RegEnumKeyExW(hUninstallKey, i, subKeyName, &subKeyNameSize, NULL, NULL, NULL, NULL) == ERROR_SUCCESS) {
+                    HKEY hAppKey;
+                    if (RegOpenKeyExW(hUninstallKey, subKeyName, 0, KEY_READ, &hAppKey) == ERROR_SUCCESS) {
+                        wchar_t displayName[256] = L"";
+                        wchar_t installLocation[512] = L"";
+                        wchar_t version[128] = L"";
+                        DWORD systemComponent = 0;
+                        DWORD bufferSize;
+                        DWORD dataType;
+
+                        // Read DisplayName
+                        bufferSize = sizeof(displayName);
+                        RegQueryValueExW(hAppKey, L"DisplayName", NULL, &dataType, (LPBYTE)displayName, &bufferSize);
+
+                        // Skip if no display name or is system component
+                        bufferSize = sizeof(systemComponent);
+                        RegQueryValueExW(hAppKey, L"SystemComponent", NULL, NULL, (LPBYTE)&systemComponent, &bufferSize);
+                        
+                        if (wcslen(displayName) == 0 || systemComponent == 1) {
+                            RegCloseKey(hAppKey);
+                            continue;
+                        }
+
+                        // Read InstallLocation
+                        bufferSize = sizeof(installLocation);
+                        RegQueryValueExW(hAppKey, L"InstallLocation", NULL, &dataType, (LPBYTE)installLocation, &bufferSize);
+
+                        // Read DisplayVersion
+                        bufferSize = sizeof(version);
+                        RegQueryValueExW(hAppKey, L"DisplayVersion", NULL, &dataType, (LPBYTE)version, &bufferSize);
+
+                        RegCloseKey(hAppKey);
+
+                        // Convert to UTF-8 strings
+                        std::string appName = WCharToUTF8(displayName);
+                        std::string appLocation = WCharToUTF8(installLocation);
+                        std::string appVersion = WCharToUTF8(version);
+                        
+                        // Check if already added (avoid duplicates)
+                        if (addedApps.find(appName) != addedApps.end()) {
+                            continue;
+                        }
+                        addedApps.insert(appName);
+
+                        // Create AppInfo
+                        AppInfo app;
+                        app.displayName = appName;
+                        app.installLocation = appLocation;
+                        app.version = appVersion;
+                        
+                        // Extract executable name from display name (simple heuristic)
+                        app.name = appName;
+                        
+                        // Check if app is running by looking for common executable names
+                        app.isRunning = false;
+                        app.runningPIDs.clear();
+
+                        // Try to find executable in install location
+                        if (!appLocation.empty()) {
+                            std::string exeName = "";
+                            
+                            // Search for .exe files in install location
+                            WIN32_FIND_DATAA findData;
+                            std::string searchPath = appLocation + "\\*.exe";
+                            HANDLE hFind = FindFirstFileA(searchPath.c_str(), &findData);
+                            
+                            if (hFind != INVALID_HANDLE_VALUE) {
+                                // Use first .exe found as the main executable
+                                exeName = findData.cFileName;
+                                FindClose(hFind);
+                                
+                                // Check if this process is running
+                                app.runningPIDs = GetPIDsByProcessName(exeName);
+                                app.isRunning = !app.runningPIDs.empty();
+                            }
+                        }
+
+                        apps.push_back(app);
+                    }
+                }
+            }
+            RegCloseKey(hUninstallKey);
+        }
+    }
+
+    return apps;
+}
+
+// Start an application
+bool StartApplication(const std::string& appName) {
+    // Get list of installed apps
+    auto apps = GetInstalledApplications();
+    
+    for (const auto& app : apps) {
+        if (app.displayName == appName) {
+            if (!app.installLocation.empty()) {
+                // Try to find and start the executable
+                WIN32_FIND_DATAA findData;
+                std::string searchPath = app.installLocation + "\\*.exe";
+                HANDLE hFind = FindFirstFileA(searchPath.c_str(), &findData);
+                
+                if (hFind != INVALID_HANDLE_VALUE) {
+                    std::string exePath = app.installLocation + "\\" + std::string(findData.cFileName);
+                    FindClose(hFind);
+                    
+                    return StartApp(exePath);
+                }
+            }
+            
+            // Fallback: Try to start by display name
+            return StartApp(app.displayName);
+        }
+    }
+    
+    return false;
+}
+
+// Stop an application (kill all its processes)
+bool StopApplication(const std::string& appName) {
+    // Get list of installed apps
+    auto apps = GetInstalledApplications();
+    
+    for (const auto& app : apps) {
+        if (app.displayName == appName) {
+            if (app.isRunning && !app.runningPIDs.empty()) {
+                // Kill all running instances
+                bool success = true;
+                for (DWORD pid : app.runningPIDs) {
+                    if (!KillProcessByPID(pid)) {
+                        success = false;
+                    }
+                }
+                return success;
+            }
+            return false; // App not running
+        }
+    }
+    
+    return false; // App not found
 }

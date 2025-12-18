@@ -551,6 +551,60 @@ void on_message(server* s, websocketpp::connection_hdl hdl, server::message_ptr 
             }
 
             // =============================================================
+            // NHÓM LỆNH: INSTALLED APPLICATIONS MANAGEMENT
+            // =============================================================
+            else if (cmd == "LIST_APPS") {
+                auto apps = GetInstalledApplications();
+                json j_apps = json::array();
+                
+                for (const auto& app : apps) {
+                    json j_app;
+                    j_app["name"] = app.displayName;
+                    j_app["version"] = app.version;
+                    j_app["location"] = app.installLocation;
+                    j_app["isRunning"] = app.isRunning;
+                    j_app["pidCount"] = app.runningPIDs.size();
+                    
+                    json j_pids = json::array();
+                    for (DWORD pid : app.runningPIDs) {
+                        j_pids.push_back(pid);
+                    }
+                    j_app["pids"] = j_pids;
+                    
+                    j_apps.push_back(j_app);
+                }
+                
+                j_res["data"] = j_apps;
+                j_res["type"] = "APP_LIST_RESULT";
+            }
+            else if (cmd == "START_APP") {
+                std::string appName = j_req["appName"];
+                bool success = StartApplication(appName);
+                
+                if (success) {
+                    j_res["msg"] = "THÀNH CÔNG: Đã khởi chạy ứng dụng: " + appName;
+                    j_res["success"] = true;
+                } else {
+                    j_res["msg"] = "THẤT BẠI: Không thể khởi chạy: " + appName;
+                    j_res["success"] = false;
+                }
+                j_res["type"] = "ACTION_RESULT";
+            }
+            else if (cmd == "STOP_APP") {
+                std::string appName = j_req["appName"];
+                bool success = StopApplication(appName);
+                
+                if (success) {
+                    j_res["msg"] = "THÀNH CÔNG: Đã dừng ứng dụng: " + appName;
+                    j_res["success"] = true;
+                } else {
+                    j_res["msg"] = "THẤT BẠI: Không thể dừng hoặc ứng dụng không chạy: " + appName;
+                    j_res["success"] = false;
+                }
+                j_res["type"] = "ACTION_RESULT";
+            }
+
+            // =============================================================
             else if (cmd == "KILL_SERVER") {
                 j_res["msg"] = "Server da nhan lenh tu huy. Tam biet!";
                 j_res["type"] = "ACTION_RESULT";

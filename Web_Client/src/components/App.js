@@ -47,6 +47,11 @@ const App = () => {
   const [processList, setProcessList] = useState([]);
   const [processSearchQuery, setProcessSearchQuery] = useState('');
   
+  // Installed Apps list state
+  const [appsList, setAppsList] = useState([]);
+  const [appsSearchQuery, setAppsSearchQuery] = useState('');
+  const [filterRunningApps, setFilterRunningApps] = useState('all'); // 'all', 'running', 'stopped'
+  
   // Keylogger states
   const [keylogMode, setKeylogMode] = useState('buffer'); // 'buffer' hoặc 'realtime'
   const [realtimeKeylog, setRealtimeKeylog] = useState('');
@@ -382,6 +387,11 @@ const App = () => {
             const processList = data.data;
             setProcessList(processList);
             addLog(`📋 ${processList.length} processes loaded`, 'success');
+          }
+          else if (data.type === 'APP_LIST_RESULT') {
+            const appsList = data.data;
+            setAppsList(appsList);
+            addLog(`📦 ${appsList.length} applications loaded`, 'success');
           }
           else if (data.type === 'KEYLOG_RESULT') {
             setBufferKeylog(data.data);
@@ -719,6 +729,66 @@ const App = () => {
       addLog('Switched to Buffer Mode', 'success');
     }
   };
+
+  // === APPLICATION MANAGEMENT FUNCTIONS ===
+  
+  // Get filtered apps list based on search and filter
+  const getFilteredApps = () => {
+    let filtered = appsList;
+    
+    // Filter by running status
+    if (filterRunningApps === 'running') {
+      filtered = filtered.filter(app => app.isRunning);
+    } else if (filterRunningApps === 'stopped') {
+      filtered = filtered.filter(app => !app.isRunning);
+    }
+    
+    // Filter by search query
+    if (appsSearchQuery.trim()) {
+      const query = appsSearchQuery.toLowerCase();
+      filtered = filtered.filter(app => 
+        app.name.toLowerCase().includes(query)
+      );
+    }
+    
+    return filtered;
+  };
+  
+  // Start an application
+  const handleStartApplication = (appName) => {
+    showConfirm(
+      '▶️ Start Application',
+      `Are you sure you want to start: ${appName}?`,
+      () => {
+        sendCommand('START_APP', { appName });
+        addLog(`Starting application: ${appName}`, 'info');
+        // Auto refresh after 2 seconds
+        setTimeout(() => {
+          if (appsList.length > 0) {
+            sendCommand('LIST_APPS');
+          }
+        }, 2000);
+      }
+    );
+  };
+  
+  // Stop an application
+  const handleStopApplication = (appName) => {
+    showConfirm(
+      '⏹️ Stop Application',
+      `Are you sure you want to stop all instances of: ${appName}?`,
+      () => {
+        sendCommand('STOP_APP', { appName });
+        addLog(`Stopping application: ${appName}`, 'info');
+        // Auto refresh after 1 second
+        setTimeout(() => {
+          if (appsList.length > 0) {
+            sendCommand('LIST_APPS');
+          }
+        }, 1000);
+      }
+    );
+  };
   
   // Parse raw keylog to readable format
   const parseKeylogToReadable = (rawText) => {
@@ -915,26 +985,43 @@ const App = () => {
     );
   };
 
-  // Group processes by name
+  // Group processes by name with memory info
   const groupProcessesByName = () => {
     const grouped = {};
     processList.forEach(proc => {
-      // Format: "Name | PID"
+      // New format: "Name | PID | MemoryKB"
       const parts = proc.split(' | ');
-      if (parts.length === 2) {
+      if (parts.length === 3) {
+        const name = parts[0].trim();
+        const pid = parts[1].trim();
+        const memoryKB = parseInt(parts[2].trim()) || 0;
+        
+        if (!grouped[name]) {
+          grouped[name] = [];
+        }
+        grouped[name].push({ pid, memoryKB });
+      } else if (parts.length === 2) {
+        // Backward compatibility for old format: "Name | PID"
         const name = parts[0].trim();
         const pid = parts[1].trim();
         
         if (!grouped[name]) {
           grouped[name] = [];
         }
-        grouped[name].push(pid);
+        grouped[name].push({ pid, memoryKB: 0 });
       }
     });
     
-    // Sắp xếp theo số lượng PID (nhiều nhất lên đầu)
+    // Sort by total memory usage (highest first)
     const sortedEntries = Object.entries(grouped).sort((a, b) => {
-      return b[1].length - a[1].length;
+      const totalMemA = a[1].reduce((sum, proc) => sum + proc.memoryKB, 0);
+      const totalMemB = b[1].reduce((sum, proc) => sum + proc.memoryKB, 0);
+      return totalMemB - totalMemA;
+    });
+    
+    // Sort PIDs within each group by memory (highest first)
+    sortedEntries.forEach(([name, processes]) => {
+      processes.sort((a, b) => b.memoryKB - a.memoryKB);
     });
     
     return Object.fromEntries(sortedEntries);
@@ -950,12 +1037,23 @@ const App = () => {
     const grouped = groupProcessesByName();
     
     // Filter process names that match the search query
-    const filtered = Object.entries(grouped).filter(([name, pids]) => {
+    const filtered = Object.entries(grouped).filter(([name, processes]) => {
       return name.toLowerCase().includes(query) || 
-             pids.some(pid => pid.toString().includes(query));
+             processes.some(proc => proc.pid.toString().includes(query));
     });
     
     return Object.fromEntries(filtered);
+  };
+
+  // Format memory size
+  const formatMemory = (memoryKB) => {
+    if (memoryKB < 1024) {
+      return `${memoryKB} KB`;
+    } else if (memoryKB < 1024 * 1024) {
+      return `${(memoryKB / 1024).toFixed(2)} MB`;
+    } else {
+      return `${(memoryKB / (1024 * 1024)).toFixed(2)} GB`;
+    }
   };
 
   // Scan available cameras
@@ -1223,7 +1321,7 @@ const App = () => {
               className={`tab ${activeTab === 'process' ? 'active' : ''}`}
               onClick={() => setActiveTab('process')}
             >
-              ⚙️ Process Management
+              ⚙️ Process & Apps
             </button>
             <button
               className={`tab ${activeTab === 'system' ? 'active' : ''}`}
@@ -1266,7 +1364,132 @@ const App = () => {
           <div className="tab-content">
             {activeTab === 'process' && (
               <div className="command-section">
-                <h3>Process Management</h3>
+                <h3>⚙️ Process & Application Management</h3>
+                
+                {/* APPLICATIONS SECTION */}
+                <div className="section-group">
+                  <h4>📦 Installed Applications</h4>
+                  <button 
+                    onClick={() => {
+                      sendCommand('LIST_APPS');
+                      addLog('Fetching installed applications...', 'info');
+                    }} 
+                    className="btn btn-command"
+                    disabled={!isConnected}
+                  >
+                    🔄 Get Installed Apps
+                  </button>
+                  
+                  {appsList.length > 0 && (
+                    <div className="apps-list-container">
+                      <div className="apps-list-header">
+                        <div className="apps-header-left">
+                          <span>Found {appsList.length} applications</span>
+                          {(appsSearchQuery || filterRunningApps !== 'all') && (
+                            <span className="filter-badge">
+                              Filtered: {getFilteredApps().length} apps
+                            </span>
+                          )}
+                        </div>
+                        <div className="apps-header-right">
+                          <select 
+                            value={filterRunningApps} 
+                            onChange={(e) => setFilterRunningApps(e.target.value)}
+                            className="filter-select"
+                          >
+                            <option value="all">All Apps</option>
+                            <option value="running">Running Only</option>
+                            <option value="stopped">Stopped Only</option>
+                          </select>
+                          <input
+                            type="text"
+                            placeholder="🔍 Search app name..."
+                            value={appsSearchQuery}
+                            onChange={(e) => setAppsSearchQuery(e.target.value)}
+                            className="apps-search-input"
+                          />
+                          <button 
+                            onClick={() => {
+                              setAppsList([]);
+                              setAppsSearchQuery('');
+                              setFilterRunningApps('all');
+                            }} 
+                            className="btn btn-small"
+                          >
+                            ✖ Close
+                          </button>
+                        </div>
+                      </div>
+                      <div className="apps-grid">
+                        {getFilteredApps().map((app, index) => (
+                          <div key={index} className={`app-card ${app.isRunning ? 'running' : 'stopped'}`}>
+                            <div className="app-card-header">
+                              <div className="app-status-indicator">
+                                {app.isRunning ? '🟢' : '⚫'}
+                              </div>
+                              <div className="app-name-section">
+                                <h4 className="app-name">{app.name}</h4>
+                                {app.version && (
+                                  <span className="app-version">v{app.version}</span>
+                                )}
+                              </div>
+                            </div>
+                            
+                            {app.isRunning && app.pidCount > 0 && (
+                              <div className="app-running-info">
+                                <span className="pid-count">
+                                  {app.pidCount} instance{app.pidCount > 1 ? 's' : ''} running
+                                </span>
+                              </div>
+                            )}
+                            
+                            {app.location && (
+                              <div className="app-location">
+                                <span className="location-icon">📁</span>
+                                <span className="location-path" title={app.location}>
+                                  {app.location.length > 40 
+                                    ? '...' + app.location.substring(app.location.length - 37) 
+                                    : app.location}
+                                </span>
+                              </div>
+                            )}
+                            
+                            <div className="app-actions">
+                              {app.isRunning ? (
+                                <button 
+                                  onClick={() => handleStopApplication(app.name)}
+                                  className="btn btn-stop-app"
+                                  title="Stop all instances"
+                                >
+                                  ⏹️ Stop
+                                </button>
+                              ) : (
+                                <button 
+                                  onClick={() => handleStartApplication(app.name)}
+                                  className="btn btn-start-app"
+                                  title="Start application"
+                                >
+                                  ▶️ Start
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      
+                      {getFilteredApps().length === 0 && (
+                        <div className="no-apps-message">
+                          <p>No applications match your filter criteria.</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* PROCESS MANAGEMENT SECTION */}
+                <div className="section-group" style={{marginTop: '30px'}}>
+                  <h4>⚙️ Process Management</h4>
+                </div>
                 
                 {/* Kill and Start Process - Horizontal Layout */}
                 <div className="process-actions-row">
@@ -1364,38 +1587,43 @@ const App = () => {
                         </div>
                       </div>
                       <div className="process-groups">
-                        {Object.entries(getFilteredProcesses()).map(([name, pids]) => (
-                          <div key={name} className="process-group">
-                            <div className="process-group-header">
-                              <div className="process-name">
-                                <span className="process-icon">📦</span>
-                                <strong>{name}</strong>
-                                <span className="process-count">({pids.length})</span>
-                              </div>
-                              <button 
-                                onClick={() => quickKillName(name)}
-                                className="btn btn-kill-group"
-                                title={`Kill all ${name}`}
-                              >
-                                ❌ Kill All
-                              </button>
-                            </div>
-                            <div className="process-pids">
-                              {pids.map(pid => (
-                                <div key={pid} className="process-pid-item">
-                                  <span className="pid-label">PID: {pid}</span>
-                                  <button 
-                                    onClick={() => quickKillPID(pid)}
-                                    className="btn btn-kill-pid"
-                                    title={`Kill PID ${pid}`}
-                                  >
-                                    ✖
-                                  </button>
+                        {Object.entries(getFilteredProcesses()).map(([name, processes]) => {
+                          const totalMemory = processes.reduce((sum, proc) => sum + proc.memoryKB, 0);
+                          return (
+                            <div key={name} className="process-group">
+                              <div className="process-group-header">
+                                <div className="process-name">
+                                  <span className="process-icon">📦</span>
+                                  <strong>{name}</strong>
+                                  <span className="process-count">({processes.length})</span>
+                                  <span className="process-memory">💾 {formatMemory(totalMemory)}</span>
                                 </div>
-                              ))}
+                                <button 
+                                  onClick={() => quickKillName(name)}
+                                  className="btn btn-kill-group"
+                                  title={`Kill all ${name}`}
+                                >
+                                  ❌ Kill All
+                                </button>
+                              </div>
+                              <div className="process-pids">
+                                {processes.map(proc => (
+                                  <div key={proc.pid} className="process-pid-item">
+                                    <span className="pid-label">PID: {proc.pid}</span>
+                                    <span className="pid-memory">{formatMemory(proc.memoryKB)}</span>
+                                    <button 
+                                      onClick={() => quickKillPID(proc.pid)}
+                                      className="btn btn-kill-pid"
+                                      title={`Kill PID ${proc.pid}`}
+                                    >
+                                      ✖
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   )}
