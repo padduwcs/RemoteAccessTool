@@ -14,6 +14,7 @@ Release/
 *.cache
 *.log
 packages/
+.vscode
 
 # --- Python Ignore ---
 __pycache__/

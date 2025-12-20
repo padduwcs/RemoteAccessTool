@@ -24,6 +24,7 @@ struct AppInfo {
     std::string displayName;
     std::string installLocation;
     std::string version;
+    std::string exePath;
     bool isRunning;
     std::vector<DWORD> runningPIDs;
 };

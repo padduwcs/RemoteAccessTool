@@ -1435,24 +1435,26 @@ const App = () => {
                               </div>
                             </div>
                             
-                            {app.isRunning && app.pidCount > 0 && (
-                              <div className="app-running-info">
-                                <span className="pid-count">
-                                  {app.pidCount} instance{app.pidCount > 1 ? 's' : ''} running
-                                </span>
-                              </div>
-                            )}
-                            
-                            {app.location && (
-                              <div className="app-location">
-                                <span className="location-icon">📁</span>
-                                <span className="location-path" title={app.location}>
-                                  {app.location.length > 40 
-                                    ? '...' + app.location.substring(app.location.length - 37) 
-                                    : app.location}
-                                </span>
-                              </div>
-                            )}
+                            <div className="app-card-content">
+                              {app.isRunning && app.pidCount > 0 && (
+                                <div className="app-running-info">
+                                  <span className="pid-count">
+                                    {app.pidCount} instance{app.pidCount > 1 ? 's' : ''} running
+                                  </span>
+                                </div>
+                              )}
+                              
+                              {app.location && (
+                                <div className="app-location">
+                                  <span className="location-icon">📁</span>
+                                  <span className="location-path" title={app.location}>
+                                    {app.location.length > 40 
+                                      ? '...' + app.location.substring(app.location.length - 37) 
+                                      : app.location}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
                             
                             <div className="app-actions">
                               {app.isRunning ? (
