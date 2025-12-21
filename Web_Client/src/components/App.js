@@ -1324,12 +1324,6 @@ const App = () => {
               ⚙️ Process & Apps
             </button>
             <button
-              className={`tab ${activeTab === 'system' ? 'active' : ''}`}
-              onClick={() => setActiveTab('system')}
-            >
-              🖥️ System
-            </button>
-            <button
               className={`tab ${activeTab === 'screenshot' ? 'active' : ''}`}
               onClick={() => setActiveTab('screenshot')}
             >
@@ -1351,7 +1345,7 @@ const App = () => {
               className={`tab ${activeTab === 'terminal' ? 'active' : ''}`}
               onClick={() => setActiveTab('terminal')}
             >
-              💻 CMD Terminal
+              �️ System Control
             </button>
             <button
               className={`tab ${activeTab === 'files' ? 'active' : ''}`}
@@ -1629,23 +1623,6 @@ const App = () => {
                       </div>
                     </div>
                   )}
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'system' && (
-              <div className="command-section">
-                <h3>System Management</h3>
-                <div className="command-buttons">
-                  <button onClick={() => sendCommand('SYSTEM_CONTROL', { type: 'LOCK' })} className="btn btn-command">
-                    Lock Computer 🔒
-                  </button>
-                  <button onClick={() => sendCommand('SYSTEM_CONTROL', { type: 'SHUTDOWN' })} className="btn btn-danger">
-                    Shutdown
-                  </button>
-                  <button onClick={() => sendCommand('SYSTEM_CONTROL', { type: 'RESTART' })} className="btn btn-danger">
-                    Restart
-                  </button>
                 </div>
               </div>
             )}
@@ -2041,7 +2018,20 @@ const App = () => {
 
             {activeTab === 'terminal' && (
               <div className="command-section">
-                <div style={{display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px'}}>
+                <h3>🖥️ System Management</h3>
+                <div className="command-buttons">
+                  <button onClick={() => sendCommand('SYSTEM_CONTROL', { type: 'LOCK' })} className="btn btn-command">
+                    🔒 Lock Computer
+                  </button>
+                  <button onClick={() => sendCommand('SYSTEM_CONTROL', { type: 'SHUTDOWN' })} className="btn btn-danger">
+                    🔌 Shutdown
+                  </button>
+                  <button onClick={() => sendCommand('SYSTEM_CONTROL', { type: 'RESTART' })} className="btn btn-danger">
+                    🔄 Restart
+                  </button>
+                </div>
+
+                <div style={{display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px', marginTop: '30px'}}>
                   <h3 style={{margin: 0}}>💻 CMD Terminal</h3>
                   <label className="checkbox-label" title="Show windows when running CMD session or executing uploaded files" style={{margin: 0}}>
                     <input
@@ -2170,7 +2160,7 @@ const App = () => {
         <div className="logs-panel" style={{ width: `${logsPanelWidth}px` }}>
           <div className="logs-header">
             <h3>📝 System Logs</h3>
-            <button onClick={clearLogs} className="btn btn-small">Clear</button>
+            <button onClick={clearLogs} className="btn btn-small">🗑️ Clear</button>
           </div>
           <div className="logs-content">
             {logs.length === 0 ? (

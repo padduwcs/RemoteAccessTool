@@ -343,14 +343,17 @@ body {
 }
 
 .btn-command {
-  flex: 1;
   background: rgba(59, 130, 246, 0.15);
   color: #93c5fd;
   border: 1px solid rgba(59, 130, 246, 0.3);
   border-radius: 10px;
   padding: 12px 20px;
+  margin: 6px;
   font-size: 14px;
   font-weight: 600;
+  width: auto;
+  max-width: fit-content;
+  flex-shrink: 0;
   cursor: pointer;
   transition: all 0.3s ease;
 }
@@ -370,9 +373,12 @@ body {
   padding: 12px 20px;
   margin: 6px;
   font-size: 14px;
+  font-weight: 600;
   width: auto;
   max-width: fit-content;
   flex-shrink: 0;
+  cursor: pointer;
+  transition: all 0.3s ease;
 }
 
 .btn-danger:hover:not(:disabled) {
