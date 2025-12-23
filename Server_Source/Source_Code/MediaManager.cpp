@@ -1,7 +1,41 @@
 ﻿#include "MediaManager.h"
 #include <mmsystem.h>
+#include <iostream>
+#include <io.h>
+#include <fcntl.h>
 
 #pragma comment(lib, "winmm.lib")
+
+// Suppress ALL output including DLL warnings (system-level stderr redirect)
+class SuppressAllOutput {
+public:
+    SuppressAllOutput() {
+        // Save original stderr
+        old_stderr = _dup(_fileno(stderr));
+        old_stdout = _dup(_fileno(stdout));
+        
+        // Redirect stderr and stdout to NUL
+        FILE* null_file = nullptr;
+        freopen_s(&null_file, "NUL", "w", stderr);
+        freopen_s(&null_file, "NUL", "w", stdout);
+    }
+    
+    ~SuppressAllOutput() {
+        // Restore stderr and stdout
+        _dup2(old_stderr, _fileno(stderr));
+        _dup2(old_stdout, _fileno(stdout));
+        _close(old_stderr);
+        _close(old_stdout);
+        
+        // Re-sync C++ streams
+        std::ios::sync_with_stdio(false);
+        std::ios::sync_with_stdio(true);
+    }
+    
+private:
+    int old_stderr;
+    int old_stdout;
+};
 
 // Quét tất cả camera có sẵn trên hệ thống - Simple version without DirectShow
 std::string ScanAvailableCameras() {
@@ -228,9 +262,62 @@ void RecordVideoThread(server* s, websocketpp::connection_hdl hdl, int duration,
     }
     catch (...) {}
 
-    std::string filename = "server_rec_temp.avi";
+    std::string filename = "server_rec_temp.mp4";
     cv::VideoWriter writer;
-    writer.open(filename, cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), 20.0, cv::Size(width, height), true);
+    std::string codecUsed = "unknown";
+    
+    // Suppress ALL output including DLL warnings during codec detection
+    {
+        SuppressAllOutput suppressAll;
+        
+        // Priority 1: Try avc1 first (most compatible, no warnings)
+        writer.open(filename, cv::VideoWriter::fourcc('a', 'v', 'c', '1'), 20.0, cv::Size(width, height), true);
+        if (writer.isOpened()) {
+            codecUsed = "H.264 (AVC1)";
+        }
+        
+        // Priority 2: Try H264
+        if (!writer.isOpened()) {
+            writer.open(filename, cv::VideoWriter::fourcc('H', '2', '6', '4'), 20.0, cv::Size(width, height), true);
+            if (writer.isOpened()) {
+                codecUsed = "H.264";
+            }
+        }
+        
+        // Priority 3: Try h264 (lowercase)
+        if (!writer.isOpened()) {
+            writer.open(filename, cv::VideoWriter::fourcc('h', '2', '6', '4'), 20.0, cv::Size(width, height), true);
+            if (writer.isOpened()) {
+                codecUsed = "H.264 (h264)";
+            }
+        }
+        
+        // Priority 4: Try X264 (may show warnings but works)
+        if (!writer.isOpened()) {
+            writer.open(filename, cv::VideoWriter::fourcc('X', '2', '6', '4'), 20.0, cv::Size(width, height), true);
+            if (writer.isOpened()) {
+                codecUsed = "H.264 (X264)";
+            }
+        }
+        
+        // Fallback: Use MJPEG in AVI container
+        if (!writer.isOpened()) {
+            filename = "server_rec_temp.avi";
+            writer.open(filename, cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), 20.0, cv::Size(width, height), true);
+            if (writer.isOpened()) {
+                codecUsed = "MJPEG (AVI)";
+            }
+        }
+    } // Destructor restores stderr/stdout - warnings completely hidden
+    
+    if (!writer.isOpened()) {
+        std::cout << "[Record] ❌ No codec available!" << std::endl;
+        cap.release();
+        return;
+    }
+    
+    // Only print final codec used - clean and simple
+    std::cout << "[Record] ✅ " << codecUsed << " | " << width << "x" << height << " @ 20fps" << std::endl;
 
     cv::Mat frame;
     int totalFrames = duration * 20; // 20 FPS

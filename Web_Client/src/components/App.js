@@ -563,10 +563,10 @@ const App = () => {
             setRecordingStarted(false);
             setRecordCountdown(0);
             setIsConverting(true);
-            addLog('Converting AVI video to MP4...', 'info');
+            addLog('Processing video...', 'info');
             
-            // Convert AVI to MP4
-            fetch('/convert-video', {
+            // Receive video from server (already in MP4 format)
+            fetch('/receive-video', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ video_data: data.data })
@@ -583,9 +583,36 @@ const App = () => {
                 link.click();
                 addLog('Downloaded AVI video (conversion failed)', 'warning');
               } else {
-                setRecordingData(result.mp4_data);
-                setIsStreaming(false);
-                addLog('Video converted to MP4 successfully!', 'success');
+                // Debug: Check video data
+                const base64Data = result.mp4_data;
+                console.log('📊 Video data length:', base64Data.length);
+                console.log('📊 First 50 chars:', base64Data.substring(0, 50));
+                
+                // Convert base64 to Blob for better browser compatibility
+                try {
+                  const byteCharacters = atob(base64Data);
+                  const byteNumbers = new Array(byteCharacters.length);
+                  for (let i = 0; i < byteCharacters.length; i++) {
+                    byteNumbers[i] = byteCharacters.charCodeAt(i);
+                  }
+                  const byteArray = new Uint8Array(byteNumbers);
+                  const blob = new Blob([byteArray], { type: 'video/mp4' });
+                  
+                  console.log('📊 Blob size:', blob.size, 'bytes');
+                  console.log('📊 Blob type:', blob.type);
+                  
+                  // Create object URL (better than data URI for large videos)
+                  const blobUrl = URL.createObjectURL(blob);
+                  setRecordingData(blobUrl);
+                  setIsStreaming(false);
+                  addLog(`Video ready! Size: ${(blob.size / 1024).toFixed(0)} KB`, 'success');
+                } catch (err) {
+                  console.error('❌ Blob conversion error:', err);
+                  // Fallback to base64
+                  setRecordingData(base64Data);
+                  setIsStreaming(false);
+                  addLog('Video ready (base64 mode)', 'success');
+                }
               }
             })
             .catch(err => {
@@ -943,7 +970,7 @@ const App = () => {
   const downloadRecording = () => {
     if (!recordingData) return;
     const link = document.createElement('a');
-    link.href = 'data:video/mp4;base64,' + recordingData;
+    link.href = recordingData.startsWith('blob:') ? recordingData : 'data:video/mp4;base64,' + recordingData;
     link.download = `recording_${Date.now()}.mp4`;
     link.click();
     addLog('MP4 video downloaded', 'success');
@@ -1066,6 +1093,17 @@ const App = () => {
   // Start/Stop webcam stream
   const handleStartWebcam = () => {
     if (!isStreaming) {
+      // Stop recording if active (mutual exclusion)
+      if (isRecording) {
+        setIsRecording(false);
+        setRecordingStarted(false);
+        if (recordingTimerRef.current) {
+          clearInterval(recordingTimerRef.current);
+          recordingTimerRef.current = null;
+        }
+        addLog('⚠️ Stopped recording to start live stream', 'warning');
+      }
+      
       setIsStreaming(true);
       sendCommand('START_CAM', { cameraIndex: selectedCamera });
       addLog(`Starting webcam stream (Camera ${selectedCamera})...`, 'info');
@@ -1083,14 +1121,17 @@ const App = () => {
 
   // Start recording with countdown
   const handleStartRecording = () => {
-    if (isStreaming) {
-      addLog('Please stop live stream before recording!', 'error');
-      return;
-    }
-    
     if (recordDuration < 1 || recordDuration > 60) {
       showAlert('⚠️ Invalid Duration', 'Duration must be between 1 and 60 seconds!');
       return;
+    }
+    
+    // Stop live stream if active (mutual exclusion)
+    if (isStreaming) {
+      setIsStreaming(false);
+      sendCommand('STOP_CAM');
+      setWebcamFrame(null);
+      addLog('⚠️ Stopped live stream to start recording', 'warning');
     }
     
     // Clear any existing timer
@@ -1118,6 +1159,17 @@ const App = () => {
   // Start/Stop live audio listening
   const handleStartListening = () => {
     if (!isListening) {
+      // Stop audio recording if active (mutual exclusion)
+      if (isAudioRecording) {
+        setIsAudioRecording(false);
+        setAudioRecordingStarted(false);
+        if (audioRecordingTimerRef.current) {
+          clearInterval(audioRecordingTimerRef.current);
+          audioRecordingTimerRef.current = null;
+        }
+        addLog('⚠️ Stopped audio recording to start live listening', 'warning');
+      }
+      
       // Create AudioContext for playback
       if (!window.audioContextRef) {
         window.audioContextRef = new (window.AudioContext || window.webkitAudioContext)();
@@ -1143,14 +1195,16 @@ const App = () => {
 
   // Record audio with duration
   const handleStartAudioRecording = () => {
-    if (isListening) {
-      addLog('Please stop live listening before recording!', 'error');
-      return;
-    }
-    
     if (audioRecordDuration < 1 || audioRecordDuration > 120) {
       showAlert('⚠️ Invalid Duration', 'Duration must be between 1 and 120 seconds!');
       return;
+    }
+    
+    // Stop live listening if active (mutual exclusion)
+    if (isListening) {
+      setIsListening(false);
+      sendCommand('STOP_MIC');
+      addLog('⚠️ Stopped live listening to start recording', 'warning');
     }
     
     setIsRecordingAudio(true);
@@ -1788,11 +1842,15 @@ const App = () => {
                             loop
                             className="preview-video"
                             key={recordingData}
+                            src={recordingData.startsWith('blob:') ? recordingData : `data:video/mp4;base64,${recordingData}`}
+                            onError={(e) => {
+                              console.error('❌ Video playback error:', e);
+                              console.log('Video src:', e.target.src.substring(0, 100));
+                            }}
+                            onLoadedMetadata={(e) => {
+                              console.log('✅ Video loaded! Duration:', e.target.duration, 'seconds');
+                            }}
                           >
-                            <source 
-                              src={`data:video/mp4;base64,${recordingData}`} 
-                              type="video/mp4"
-                            />
                             Your browser doesn't support video playback.
                           </video>
                           <div className="preview-actions">
