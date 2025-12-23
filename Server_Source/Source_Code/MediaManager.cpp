@@ -221,6 +221,9 @@ void WebcamThreadFunc(server* s, websocketpp::connection_hdl hdl, int cameraInde
     cv::Mat frame;
     std::vector<uchar> buf;
     std::vector<int> params = { cv::IMWRITE_JPEG_QUALITY, 50 };
+    
+    int sendFailCount = 0; // Track consecutive send failures
+    int adaptiveDelay = 60; // Start with 60ms delay (16.7 FPS)
 
     while (g_IsStreaming) {
         cap >> frame;
@@ -234,12 +237,30 @@ void WebcamThreadFunc(server* s, websocketpp::connection_hdl hdl, int cameraInde
             j["type"] = "CAM_FRAME";
             j["data"] = jpg_b64;
             s->send(hdl, j.dump(), websocketpp::frame::opcode::text);
+            
+            // Reset fail count on successful send
+            sendFailCount = 0;
+            
+            // Gradually reduce delay back to normal if connection is good
+            if (adaptiveDelay > 60) {
+                adaptiveDelay = std::max(60, adaptiveDelay - 5);
+            }
         }
         catch (...) {
-            g_IsStreaming = false;
+            sendFailCount++;
+            // If multiple failures, slow down frame rate to reduce network pressure
+            if (sendFailCount > 3) {
+                adaptiveDelay = std::min(200, adaptiveDelay + 20); // Max 5 FPS on poor network
+                std::cout << "[Stream] Network congestion detected, reducing FPS (delay: " << adaptiveDelay << "ms)" << std::endl;
+            }
+            
+            if (sendFailCount > 10) {
+                std::cout << "[Stream] Too many send failures, stopping stream" << std::endl;
+                g_IsStreaming = false;
+            }
         }
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(60));
+        std::this_thread::sleep_for(std::chrono::milliseconds(adaptiveDelay));
     }
     cap.release();
 }

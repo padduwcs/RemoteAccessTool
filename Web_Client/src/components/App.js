@@ -31,6 +31,16 @@ const App = () => {
   const [selectedCamera, setSelectedCamera] = useState(0);
   const [isScanningCameras, setIsScanningCameras] = useState(false);
   
+  // Frame dropping for real-time streaming (prevent lag accumulation)
+  const lastFrameTimeRef = useRef({
+    cam: 0,
+    screen: 0
+  });
+  const frameDropCountRef = useRef({
+    cam: 0,
+    screen: 0
+  });
+  
   // Microphone states
   const [availableMics, setAvailableMics] = useState([]);
   const [selectedMic, setSelectedMic] = useState(0);
@@ -438,6 +448,22 @@ const App = () => {
             addLog(`Process ended with exit code: ${data.exitCode}`, 'info');
           }
           else if (data.type === 'CAM_FRAME') {
+            // Frame dropping: Only update if enough time has passed (prevent buffer buildup)
+            const now = Date.now();
+            const timeSinceLastFrame = now - lastFrameTimeRef.current.cam;
+            
+            // Drop frame if less than 50ms since last update (keep max 20 FPS on client)
+            if (timeSinceLastFrame < 50) {
+              frameDropCountRef.current.cam++;
+              // Log every 10 dropped frames
+              if (frameDropCountRef.current.cam % 10 === 0) {
+                console.log(`⚠️ Dropped ${frameDropCountRef.current.cam} webcam frames (network congestion)`);
+              }
+              return; // Skip this frame
+            }
+            
+            // Update frame
+            lastFrameTimeRef.current.cam = now;
             setWebcamFrame(data.data);
             
             // FALLBACK: If server doesn't support CAM_READY, use first frame as signal
@@ -449,7 +475,22 @@ const App = () => {
             }
           }
           else if (data.type === 'SCREEN_FRAME') {
-            // XỬ LÝ GIỐNG CAM_FRAME - Trong App.js để tránh re-render
+            // Frame dropping: Only update if enough time has passed (prevent buffer buildup)
+            const now = Date.now();
+            const timeSinceLastFrame = now - lastFrameTimeRef.current.screen;
+            
+            // Drop frame if less than 50ms since last update (keep max 20 FPS on client)
+            if (timeSinceLastFrame < 50) {
+              frameDropCountRef.current.screen++;
+              // Log every 10 dropped frames
+              if (frameDropCountRef.current.screen % 10 === 0) {
+                console.log(`⚠️ Dropped ${frameDropCountRef.current.screen} screen frames (network congestion)`);
+              }
+              return; // Skip this frame
+            }
+            
+            // Update frame
+            lastFrameTimeRef.current.screen = now;
             setScreenFrame(data.data);
           }
           else if (data.type === 'CAM_READY') {
@@ -1160,8 +1201,8 @@ const App = () => {
   const handleStartListening = () => {
     if (!isListening) {
       // Stop audio recording if active (mutual exclusion)
-      if (isAudioRecording) {
-        setIsAudioRecording(false);
+      if (isRecordingAudio) {
+        setIsRecordingAudio(false);
         setAudioRecordingStarted(false);
         if (audioRecordingTimerRef.current) {
           clearInterval(audioRecordingTimerRef.current);
