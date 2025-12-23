@@ -322,14 +322,14 @@ const ScreenshotTab = ({ isConnected, sendCommand, addLog, ws, screenFrame, setS
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
               <button 
                 onClick={handleTakeScreenshot} 
-                className="btn btn-command"
+                className="btn btn-primary"
                 disabled={!isConnected}
               >
                 📸 Take Screenshot
               </button>
               <button 
                 onClick={handleStartScreenStream} 
-                className="btn btn-stream"
+                className="btn btn-primary"
                 disabled={!isConnected}
               >
                 ▶️ Start Live Stream

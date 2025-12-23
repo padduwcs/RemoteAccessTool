@@ -2834,37 +2834,54 @@ button:disabled {
 .rc-checkbox-label {
   display: flex;
   align-items: center;
-  gap: 6px;
-  color: #cbd5e1;
-  font-size: 13px;
-  cursor: pointer;
-  user-select: none;
-}
-
-.rc-checkbox-label input[type="checkbox"] {
-  cursor: pointer;
-}
-
-.rc-scale-select {
-  padding: 6px 12px;
+  gap: 8px;
+  padding: 8px 16px;
   background: rgba(30, 41, 59, 0.8);
   border: 1px solid rgba(148, 163, 184, 0.3);
   border-radius: 6px;
   color: #cbd5e1;
-  font-size: 13px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.2s ease;
+}
+
+.rc-checkbox-label:hover {
+  background: rgba(30, 41, 59, 1);
+  border-color: rgba(148, 163, 184, 0.5);
+  transform: translateY(-1px);
+}
+
+.rc-checkbox-label input[type="checkbox"] {
+  cursor: pointer;
+  width: 16px;
+  height: 16px;
+}
+
+.rc-scale-select {
+  padding: 8px 16px;
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 6px;
+  color: #cbd5e1;
+  font-size: 14px;
+  font-weight: 500;
   cursor: pointer;
   outline: none;
   transition: all 0.2s ease;
+  min-width: 130px;
 }
 
 .rc-scale-select:hover {
   background: rgba(30, 41, 59, 1);
   border-color: rgba(148, 163, 184, 0.5);
+  transform: translateY(-1px);
 }
 
 .rc-scale-select:focus {
   border-color: #3b82f6;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
 }
 
 .rc-screen-container {
