@@ -1,4 +1,4 @@
-# RemoteAccessTool — Hướng dẫn nhanh & Tuyên bố
+# RemoteAccessTool
 
 **Mô tả ngắn:**
 Bộ công cụ truy cập từ xa gồm **Server (C++ / Windows)** và **Client (Web)** dùng WebSocket để kết nối, truyền lệnh và quản lý file/media. Chỉ dùng cho mục đích học thuật và quản trị được phép.
@@ -46,10 +46,3 @@ Bộ công cụ truy cập từ xa gồm **Server (C++ / Windows)** và **Client
 - Mọi hoạt động kiểm thử bảo mật phải có **sự cho phép bằng văn bản** của chủ hệ thống.
 
 ---
-
-## Liên hệ & đóng góp
-- Mở Issue hoặc gửi PR trên repository để đóng góp hoặc báo lỗi.
-
----
-
-*Ngắn gọn, rõ ràng; muốn tôi chỉnh tone (trang trọng/học thuật/khẩn) hoặc thêm ví dụ lệnh cụ thể không?*
