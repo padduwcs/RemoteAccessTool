@@ -39,7 +39,7 @@ Bộ công cụ truy cập từ xa gồm **Server (C++ / Windows)** và **Client
 
 ---
 
-## Tuyên bố (Disclaimer, ngắn gọn)
+## Disclaimer
 - Phần mềm này **chỉ phục vụ mục đích học thuật và quản trị hệ thống được phép**.
 - **Cấm** sử dụng để truy cập, điều khiển hoặc thu thập dữ liệu từ hệ thống mà bạn không có quyền hợp lệ.
 - Tác giả **không chịu trách nhiệm** cho mọi hậu quả pháp lý hoặc thiệt hại phát sinh từ việc sử dụng trái phép.
